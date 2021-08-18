@@ -1,0 +1,34 @@
+$breakpoint-xs: 599px;
+$breakpoint-sm: 1023px;
+$breakpoint-md: 1439px;
+$breakpoint-lg: 1919px;
+
+@mixin xs-width() {
+  @media all and (max-width: $breakpoint-xs) {
+    @content;
+  }
+}
+
+@mixin sm-width() {
+  @media all and (min-width: $breakpoint-xs) and(max-width: $breakpoint-sm) {
+    @content;
+  }
+}
+
+@mixin md-width() {
+  @media all and (min-width: $breakpoint-sm) and(max-width: $breakpoint-md) {
+    @content;
+  }
+}
+
+@mixin lg-width() {
+  @media all and (min-width: $breakpoint-md) and (max-width: $breakpoint-lg) {
+    @content;
+  }
+}
+
+@mixin xl-width() {
+  @media all and (min-width: $breakpoint-lg) {
+    @content;
+  }
+}
