@@ -4,6 +4,15 @@
 
 簡單的圖床伺服器
 
+## 截圖
+
+首頁
+![image](https://raw.githubusercontent.com/orangesobeautiful/SimpleImageHosting/master/demo/homepage.jpg)
+使用者
+![image](https://raw.githubusercontent.com/orangesobeautiful/SimpleImageHosting/master/demo/user-images.jpg)
+圖片資訊
+![image](https://raw.githubusercontent.com/orangesobeautiful/SimpleImageHosting/master/demo/image-info.jpg)
+
 ## 編譯
 
 以 Ubuntu 20.04 為例:
