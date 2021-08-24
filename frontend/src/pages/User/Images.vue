@@ -2,15 +2,13 @@
   <div>
     <div class="row flex q-pa-sm">
       <a
+        v-if="this.$store.state.user.id == this.userID"
         ref="target_element"
         href="/upload"
         target="_blank"
         style="color: black;"
         class="user-image-card add-link q-mr-sm q-mt-sm"
       >
-        <!--
-        <q-btn icon="add" class="bg-grey-5 add-button" :ratio="1" size="xl">
-        </q-btn>-->
         <img
           class="add-button"
           src="other/addBtn.png"

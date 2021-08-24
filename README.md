@@ -40,5 +40,6 @@ CGO_ENABLED=0 go build -o SIHBackned -tags=go_json main.go
 
 ```
 cd frontend
+npm install
 quasar build
 ```
