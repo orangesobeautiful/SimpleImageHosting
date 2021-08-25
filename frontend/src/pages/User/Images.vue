@@ -19,7 +19,7 @@
       <user-image-card
         class="user-image-card q-mr-sm q-mt-sm"
         v-for="image in imageList"
-        :inputImgUrl="image.original_url"
+        :inputImgUrl="image.md_url"
         :inputImgHashID="image.hash_id"
         :key="image.key"
       >
@@ -96,6 +96,9 @@ export default {
           var data = res.data;
           this.imageList = data;
           for (var i = 0; i < this.imageList.length; i++) {
+            if (this.imageList[i].md_url == null) {
+              this.imageList[i].md_url = this.imageList[i].original_url;
+            }
             this.imageList[i].key = i;
           }
         })

@@ -27,9 +27,12 @@ const (
 	userkey = "user"
 )
 
+var mdWidth int = 700
+
 var fileSaveDir string
 var avatarDirectory string = "Avatars"
 var imageDirectory string = "ImagesDirect"
+var imageMDDirectory string = "Medium"
 var avatarSaveDir string
 var imageSaveDir string
 
@@ -92,43 +95,30 @@ func checkDictoryStruct() {
 	fmt.Println("檢查目錄結構")
 	var err error
 	var resCode int
-	resCode, err = common.CheckPath(avatarSaveDir)
-	switch resCode {
-	case -1:
-		panic("檢查目錄 " + avatarSaveDir + " 時，發生 error" + err.Error())
-	case 0:
-		err = os.Mkdir(avatarSaveDir, 0755)
-		if err != nil {
-			panic("創建 " + avatarSaveDir + " 目錄時失敗 " + err.Error())
+	var imageMDSaveDir string = path.Join(imageSaveDir, imageMDDirectory)
+	var pathList []string = []string{avatarSaveDir, imageSaveDir, imageMDSaveDir}
+
+	for _, path := range pathList {
+		resCode, err = common.CheckPath(path)
+		switch resCode {
+		case -1:
+			panic("檢查目錄 " + path + " 時，發生 error" + err.Error())
+		case 0:
+			err = os.Mkdir(path, 0755)
+			if err != nil {
+				panic("創建 " + path + " 目錄時失敗 " + err.Error())
+			}
+			break
+		case 1:
+			panic("創建 " + path + " 目錄時失敗，因為有相同名稱的檔案")
+		case 2:
+			// 已經創建
+			break
+		default:
+			panic("Unknow CheckPath Result Code")
 		}
-		break
-	case 1:
-		panic("創建 " + avatarSaveDir + " 目錄時失敗，因為有相同名稱的檔案")
-	case 2:
-		// 已經創建
-		break
-	default:
-		panic("Unknow CheckPath Result Code")
 	}
 
-	resCode, err = common.CheckPath(imageSaveDir)
-	switch resCode {
-	case -1:
-		panic("檢查目錄 " + imageSaveDir + " 時，發生 error" + err.Error())
-	case 0:
-		err = os.Mkdir(imageSaveDir, 0755)
-		if err != nil {
-			panic("創建 " + imageSaveDir + " 目錄時失敗 " + err.Error())
-		}
-		break
-	case 1:
-		panic("創建 " + imageSaveDir + " 目錄時失敗，因為有相同名稱的檔案")
-	case 2:
-		// 已經創建
-		break
-	default:
-		panic("Unknow CheckPath Result Code")
-	}
 }
 
 func initDatabase(setting settingoperation.SettingProperties, ioWriterList []io.Writer) {

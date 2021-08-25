@@ -7,6 +7,8 @@ import (
 	_ "image/gif"
 	_ "image/jpeg"
 	_ "image/png"
+	"io"
+	"io/fs"
 	"net/http"
 	"os"
 	"path"
@@ -14,6 +16,8 @@ import (
 
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
+
+	"github.com/disintegration/imaging"
 )
 
 func uploadImage(c *gin.Context) {
@@ -48,14 +52,20 @@ func uploadImage(c *gin.Context) {
 	var errList [][2]string
 
 	for _, fileHeader := range fileHeaders {
-
+		var needRecycle bool = false
+		var imgID int64
+		var gnrDBRecord, gnrMDImageFile, gnrOrgImageFile bool = false, false, false
+		var savePath, mdSavePath string
 		file, err := fileHeader.Open()
-		var headerBytes []byte
-		headerBytes = make([]byte, 14)
+		if err != nil {
+			errList = append(errList, [2]string{fileHeader.Filename, "伺服器內部錯誤"})
+			continue
+		}
+		var headerBytes []byte = make([]byte, 14)
 		_, err = file.Read(headerBytes)
 		if err != nil {
-			fmt.Println(err)
-			return
+			errList = append(errList, [2]string{fileHeader.Filename, "伺服器內部錯誤"})
+			continue
 		}
 
 		resType := http.DetectContentType(headerBytes)
@@ -111,47 +121,118 @@ func uploadImage(c *gin.Context) {
 				errList = append(errList, [2]string{fileHeader.Filename, "無法解析圖片"})
 				continue
 			}
-			err = file.Close()
-			if err != nil {
-				errList = append(errList, [2]string{fileHeader.Filename, "伺服器內部錯誤"})
-				fmt.Println("file.Close() 錯誤", err.Error())
-				continue
-			}
 
 			// 在資料庫中新增一筆紀錄
-			imgID, imgHashID, err := databaseoperation.CreateImage("", "", fileType, imgConf.Width, imgConf.Height, userIDInt)
-			var savePath = path.Join(imageSaveDir, imgHashID+"."+fileType)
+			// (需要先新增紀錄產生圖片的 HashID 才有辦法確認要儲存的檔名)
+			var mdOut, out *os.File
+			var fi fs.FileInfo
+			var orgImgFileSize, mdImgFileSize int64 = 0, 0
+			var imgHashID string
+			imgID, imgHashID, err = databaseoperation.CreateImage("", "", fileType, imgConf.Width, imgConf.Height, userIDInt)
+			savePath = path.Join(imageSaveDir, imgHashID+"."+fileType)
+			mdSavePath = path.Join(imageSaveDir, imageMDDirectory, imgHashID+".md."+fileType)
 			if err != nil {
 				errList = append(errList, [2]string{fileHeader.Filename, "server error"})
 			} else {
-				// 上傳圖片
-				err = c.SaveUploadedFile(fileHeader, savePath)
-				if err != nil {
-					// 如果上傳錯誤 則刪除那筆紀錄
-					databaseoperation.DeleteImage(imgID)
-					errList = append(errList, [2]string{fileHeader.Filename, "server error"})
-					continue
+				gnrDBRecord = true
+				//產生縮圖
+				if imgConf.Width > mdWidth {
+					_, err = file.Seek(0, 0)
+					if err != nil {
+						errList = append(errList, [2]string{fileHeader.Filename, "伺服器內部錯誤"})
+						needRecycle = true
+						goto RecycleIntermediate
+					}
+					var srcImg, resizeImg image.Image
+					srcImg, err = imaging.Decode(file, imaging.AutoOrientation(true))
+					if err != nil {
+						errList = append(errList, [2]string{fileHeader.Filename, "無法讀取圖片"})
+						needRecycle = true
+						goto RecycleIntermediate
+					}
+					resizeImg = imaging.Resize(srcImg, mdWidth, 0, imaging.Linear)
+					mdOut, err = os.Create(mdSavePath)
+					if err != nil {
+						errList = append(errList, [2]string{fileHeader.Filename, "伺服器內部錯誤"})
+						needRecycle = true
+						goto RecycleIntermediate
+					}
+					err = imaging.Encode(mdOut, resizeImg, imaging.JPEG)
+					if err != nil {
+						errList = append(errList, [2]string{fileHeader.Filename, "伺服器內部錯誤"})
+						needRecycle = true
+						goto RecycleIntermediate
+					}
+					mdOut.Close()
+					gnrMDImageFile = true
+					fi, err = os.Stat(mdSavePath)
+					if err != nil {
+						errList = append(errList, [2]string{fileHeader.Filename, "伺服器內部錯誤"})
+						needRecycle = true
+						goto RecycleIntermediate
+					}
+					mdImgFileSize = fi.Size()
 				}
 
-				// 讀取檔案大小
-				fi, err := os.Stat(savePath)
+				//儲存原圖
+				_, err = file.Seek(0, 0)
 				if err != nil {
-					// Could not obtain stat, handle error
-				} else {
-					// 更新檔案大小
-					res := databaseoperation.UpdateImage(imgID, map[string]interface{}{"Size": fi.Size()})
-					if res.Error != nil {
-						// 如果更新錯誤則刪除紀錄
-						databaseoperation.DeleteImage(imgID)
-						errList = append(errList, [2]string{fileHeader.Filename, "server error"})
-						continue
-					}
+					errList = append(errList, [2]string{fileHeader.Filename, "伺服器內部錯誤"})
+					needRecycle = true
+					goto RecycleIntermediate
+				}
+				out, err = os.Create(savePath)
+				if err != nil {
+					errList = append(errList, [2]string{fileHeader.Filename, "伺服器內部錯誤"})
+					needRecycle = true
+					goto RecycleIntermediate
+				}
+				_, err = io.Copy(out, file)
+				if err != nil {
+					errList = append(errList, [2]string{fileHeader.Filename, "伺服器內部錯誤"})
+					needRecycle = true
+					goto RecycleIntermediate
+				}
+
+				file.Close()
+				out.Close()
+				gnrOrgImageFile = true
+
+				// 讀取檔案大小
+				fi, err = os.Stat(savePath)
+				if err != nil {
+					errList = append(errList, [2]string{fileHeader.Filename, "伺服器內部錯誤"})
+					needRecycle = true
+					goto RecycleIntermediate
+				}
+				orgImgFileSize = fi.Size()
+				// 更新檔案大小
+				res := databaseoperation.UpdateImage(imgID, map[string]interface{}{"Size": orgImgFileSize, "MediumSize": mdImgFileSize})
+				if res.Error != nil {
+					errList = append(errList, [2]string{fileHeader.Filename, "server error"})
+					needRecycle = true
+					goto RecycleIntermediate
 				}
 			}
 
 		} else {
 			errList = append(errList, [2]string{fileHeader.Filename, "not allow type"})
 		}
+
+		//在生成資料庫紀錄、圖片檔案後發生錯誤時，刪除這些已經寫入的東西
+	RecycleIntermediate:
+		if needRecycle {
+			if gnrDBRecord {
+				databaseoperation.DeleteImage(imgID)
+			}
+			if gnrMDImageFile {
+				os.Remove(savePath)
+			}
+			if gnrOrgImageFile {
+				os.Remove(mdSavePath)
+			}
+		}
+
 	}
 
 	c.JSON(http.StatusOK, errList)
@@ -280,15 +361,19 @@ func getImage(c *gin.Context) {
 		avatarUrl = "/Avatars/default.png"
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	var imgDataJson map[string]interface{} = gin.H{
 		"title":        img.Title,
 		"owner_id":     user.ID,
 		"owner_name":   user.ShowName,
 		"owner_avatar": avatarUrl,
 		"description":  img.Description,
-		"original_url": imageDirectory + "/" + img.FileName,
+		"original_url": path.Join(imageDirectory, img.HashID+"."+img.Type),
 		"create_at":    strconv.FormatInt(img.CreateAt, 10),
-	})
+	}
+	if img.MediumSize > 0 {
+		imgDataJson["md_url"] = path.Join(imageDirectory, imageMDDirectory, img.HashID+".md."+img.Type)
+	}
+	c.JSON(http.StatusOK, imgDataJson)
 }
 
 func getUserImages(c *gin.Context) {
@@ -309,14 +394,19 @@ func getUserImages(c *gin.Context) {
 		c.String(http.StatusInternalServerError, "Internal server error.")
 		return
 	}
+
 	var resList []gin.H
 	for _, img := range images {
-		resList = append(resList, gin.H{
+		var imgDataJson map[string]interface{} = gin.H{
 			"hash_id":      img.HashID,
 			"title":        img.Title,
 			"description":  img.Description,
-			"original_url": imageDirectory + "/" + img.FileName,
-		})
+			"original_url": path.Join(imageDirectory, img.HashID+"."+img.Type),
+		}
+		if img.MediumSize > 0 {
+			imgDataJson["md_url"] = path.Join(imageDirectory, imageMDDirectory, img.HashID+".md."+img.Type)
+		}
+		resList = append(resList, imgDataJson)
 	}
 	c.JSON(http.StatusOK, resList)
 }

@@ -150,6 +150,7 @@ export default {
       ownerAvatar: "",
       description: "",
       originalUrl: "",
+      mdUrl: "",
       host: location.host,
       createDateStr: "",
       imageLinks: Array(),
@@ -189,6 +190,9 @@ export default {
           this.ownerAvatar = data["owner_avatar"];
           this.description = data["description"];
           this.originalUrl = data["original_url"];
+          if (data.md_url != null) {
+            this.mdUrl = data["md_url"];
+          }
 
           // 時間處理
           var create_millsec = data["create_at"] * 1000;
@@ -206,6 +210,12 @@ export default {
             name: "圖片URL",
             url: origin + "/" + this.originalUrl
           });
+          if (this.mdUrl != "") {
+            this.imageLinks.push({
+              name: "縮圖URL",
+              url: origin + "/" + this.mdUrl
+            });
+          }
         })
         .catch(error => {
           if (error.request) {

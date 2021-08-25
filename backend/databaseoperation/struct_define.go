@@ -35,10 +35,11 @@ type Image struct {
 	OwnerID  int64  `gorm:"column: OwnerID; type: BIGINT UNSIGNED NOT NULL; index:idx_owner_id;" json:"owner_id"`
 	FileName string `gorm:"column: FileName; type: VARCHAR(40);" json:"file_name"`
 
-	Type   string `gorm:"column: Type; type: VARCHAR(10) NOT NULL;" json:"type"`
-	Width  int    `gorm:"column: Width; type:INTEGER UNSIGNED NOT NULL " json:"width"`
-	Height int    `gorm:"column: Height; type:INTEGER UNSIGNED NOT NULL " json:"height"`
-	Size   int64  `gorm:"column: Size; type:BIGINT UNSIGNED" json:"size"`
+	Type       string `gorm:"column: Type; type: VARCHAR(10) NOT NULL;" json:"type"`
+	Width      int    `gorm:"column: Width; type:INTEGER UNSIGNED NOT NULL " json:"width"`
+	Height     int    `gorm:"column: Height; type:INTEGER UNSIGNED NOT NULL " json:"height"`
+	Size       int64  `gorm:"column: Size; type:BIGINT UNSIGNED" json:"size"`
+	MediumSize int64  `gorm:"column: MediumSize; type:BIGINT UNSIGNED; default:0" json:"medium_size"`
 
 	Title       string `gorm:"column: Title; type:VARCHAR(30) NOT NULL;" json:"title"`
 	Description string `gorm:"column: Description; type:VARCHAR(1000) NOT NULL;" json:"description"`

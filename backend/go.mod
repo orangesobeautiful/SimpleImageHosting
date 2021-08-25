@@ -3,8 +3,10 @@ module SimpleImageHosting
 go 1.14
 
 require (
+	github.com/disintegration/imaging v1.6.2
 	github.com/gin-contrib/sessions v0.0.3
 	github.com/gin-gonic/gin v1.7.4
+	github.com/nfnt/resize v0.0.0-20180221191011-83c6a9932646
 	github.com/smartystreets/goconvey v1.6.4 // indirect
 	github.com/speps/go-hashids/v2 v2.0.1
 	golang.org/x/crypto v0.0.0-20210813211128-0a44fdfbc16e
