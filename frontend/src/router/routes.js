@@ -14,6 +14,10 @@ const routes = [
         component: () => import("pages/User.vue"),
         children: [
           {
+            path: "",
+            redirect: "/user/:id/images"
+          },
+          {
             path: "images",
             component: () => import("pages/User/Images.vue")
           },

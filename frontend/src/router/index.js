@@ -1,7 +1,22 @@
 import Vue from "vue";
 import VueRouter from "vue-router";
-
 import routes from "./routes";
+
+// 處理 NavigationDuplicated 錯誤
+// 在 router.push 重複路徑時，選擇 reload (重新整理)
+const originalPush = VueRouter.prototype.push;
+VueRouter.prototype.push = function push(location) {
+  return originalPush.call(this, location).catch(failure => {
+    if (
+      VueRouter.isNavigationFailure(
+        failure,
+        VueRouter.NavigationFailureType.duplicated
+      )
+    ) {
+      this.go(0);
+    }
+  });
+};
 
 Vue.use(VueRouter);
 

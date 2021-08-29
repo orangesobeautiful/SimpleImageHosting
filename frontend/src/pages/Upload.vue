@@ -1,5 +1,6 @@
 <template>
   <q-page class="flex flex-center">
+    <loading-view :inputVisible="showLoading" />
     <q-dialog v-model="showMsg">
       <q-card>
         <q-card-section>
@@ -42,17 +43,23 @@
 </style>
 
 <script>
+import LoadingView from "../components/LoadingView.vue";
+
 export default {
   name: "PageUpload",
   props: [],
   data() {
     return {
       userState: this.$store.state.user,
+      showLoading: true,
       showMsg: false,
       msgTitle: "",
       msgContent: "",
       showPage: false
     };
+  },
+  components: {
+    "loading-view": LoadingView
   },
   created() {
     (this.userState = this.$store.state.user), this.pageLoad();
@@ -65,7 +72,7 @@ export default {
   methods: {
     pageLoad() {
       if (this.userState.dataLoaded) {
-        this.$q.loading.hide();
+        this.showLoading = false;
         if (this.userState.id < 0) {
           // not login
           this.msgTitle = "您尚未登入";
@@ -75,7 +82,7 @@ export default {
           this.showPage = true;
         }
       } else {
-        this.$q.loading.show();
+        this.showLoading = true;
       }
     },
     redirectHomePage() {
