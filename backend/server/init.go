@@ -14,7 +14,7 @@ import (
 	"strconv"
 
 	"github.com/gin-contrib/sessions"
-	"github.com/gin-contrib/sessions/memstore"
+	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
 	"github.com/speps/go-hashids/v2"
 	"gorm.io/driver/mysql"
@@ -249,7 +249,7 @@ func initServer(setting settingoperation.SettingProperties, ioWriterList []io.Wr
 	}
 
 	r := gin.Default()
-	store := memstore.NewStore([]byte(secretKey))
+	store := cookie.NewStore([]byte(secretKey))
 	r.Use(sessions.Sessions("lgsc", store))
 	setupRouter(r)
 
