@@ -1,6 +1,8 @@
 <template>
   <q-page>
+    <!-- loading page -->
     <loading-view :inputVisible="showLoading" />
+    <!--normal page-->
     <div v-if="userDataLoaded">
       <div class="user-card-row column">
         <div class="row q-pa-md q-gutter-sm items-center">
@@ -18,6 +20,7 @@
 
       <router-view />
     </div>
+    <!-- error page -->
     <div v-if="showNotFound" class="column not-found-colunm items-center">
       <div class="not-found-msg">
         <div class="text-center text-h5">
