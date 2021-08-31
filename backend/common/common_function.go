@@ -12,7 +12,8 @@ import (
 	"strings"
 )
 
-const MaxUnixTimeInt64 int64 = math.MaxInt64
+// MaxUnixTimeInt64 unix time max value (equal max int64 value)
+const MaxUnixTimeInt64 = math.MaxInt64
 
 // image formats and magic numbers
 var magicTable = map[string]string{
@@ -22,14 +23,13 @@ var magicTable = map[string]string{
 	"GIF89a":            "image/gif",
 }
 
-//檢查 PATH 狀態 0: 不存在, 1: 是檔案, 2: 是目錄, -1: 其他錯誤
+// CheckPath 檢查 PATH 狀態 0: 不存在, 1: 是檔案, 2: 是目錄, -1: 其他錯誤
 func CheckPath(path string) (int, error) {
 	if fInfo, err := os.Stat(path); err == nil {
 		if fInfo.IsDir() {
 			return 2, nil
-		} else {
-			return 1, nil
 		}
+		return 1, nil
 	} else if os.IsNotExist(err) {
 		return 0, err
 	} else {
@@ -38,7 +38,7 @@ func CheckPath(path string) (int, error) {
 
 }
 
-// mimeFromIncipit returns the mime type of an image file from its first few
+// ImageFileType mimeFromIncipit returns the mime type of an image file from its first few
 // bytes or the empty string if the file does not look like a known file type
 func ImageFileType(incipit []byte) string {
 	incipitStr := string(incipit)
@@ -51,6 +51,7 @@ func ImageFileType(incipit []byte) string {
 	return ""
 }
 
+// CheckEmailLogin 檢查是否能登入郵件伺服器
 func CheckEmailLogin(smtpServerAddress string, smtpUserName string, smtpPassword string) error {
 	host, portStr, _ := net.SplitHostPort(smtpServerAddress)
 	port, _ := strconv.Atoi(portStr)
@@ -67,6 +68,7 @@ func CheckEmailLogin(smtpServerAddress string, smtpUserName string, smtpPassword
 	return err
 }
 
+// GomailSender gomail 的寄送郵件功能封裝
 func GomailSender(from string, to string, subject string, body string, smtpServerAddress string, smtpUserName string, smtpPassword string) error {
 	host, portStr, _ := net.SplitHostPort(smtpServerAddress)
 	port, _ := strconv.Atoi(portStr)

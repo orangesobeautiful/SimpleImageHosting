@@ -33,12 +33,12 @@ func CreateUser(loginName string, showName string, email string, password string
 		errList = append(errList, 1)
 	}
 
-	var loginNameLen int = len(loginName)
+	var loginNameLen = len(loginName)
 	if loginNameLen < 4 || loginNameLen > 30 {
 		errList = append(errList, 2)
 	}
 
-	var showNameLen int = utf8.RuneCountInString(showName)
+	var showNameLen = utf8.RuneCountInString(showName)
 	if showNameLen < 1 || showNameLen > 15 {
 		errList = append(errList, 3)
 	}
@@ -57,7 +57,7 @@ func CreateUser(loginName string, showName string, email string, password string
 		errList = append(errList, 7)
 	}
 
-	var newUserID int64 = 0
+	var newUserID int64
 	if len(errList) == 0 {
 		bHash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 		if err != nil {
@@ -66,7 +66,7 @@ func CreateUser(loginName string, showName string, email string, password string
 		}
 
 		var res *gorm.DB
-		var currentTime int64 = time.Now().Unix()
+		var currentTime = time.Now().Unix()
 		var newUser = User{LoginName: loginName, ShowName: showName, Email: email, PwdHash: bHash, Grade: grade, LastLoginTime: currentTime, CreatedAt: currentTime}
 		if requireEmailActivate {
 			var newNotActUser NotActivatedUser
@@ -114,10 +114,7 @@ func IsLoginNameUsed(loginName string) bool {
 	var notActUser NotActivatedUser
 	notActUser.LoginName = loginName
 	res = db.Where(&notActUser).Limit(1).Find(&notActUser)
-	if res.RowsAffected > 0 {
-		return true
-	}
-	return false
+	return res.RowsAffected > 0
 }
 
 // IsEmailUsed 查詢 Email 是否被使用過
@@ -125,20 +122,14 @@ func IsEmailUsed(email string) bool {
 	var user User
 	//db.Where("Email = ?", email).First(&user)
 	res := db.Where(&User{Email: email}).Limit(1).Find(&user)
-	if res.RowsAffected > 0 {
-		return true
-	}
-	return false
+	return res.RowsAffected > 0
 }
 
 // IsUserExist 根據 ID 查詢 User 是否存在
 func IsUserExist(userID int64) bool {
 	var user User
 	res := db.Where(&User{ID: userID}, "ID").Limit(1).Find(&user)
-	if res.RowsAffected > 0 {
-		return true
-	}
-	return false
+	return res.RowsAffected > 0
 }
 
 // GetUserByLoginName 根據 LoginName 查詢 User
@@ -157,19 +148,19 @@ func GetUserByID(userID int64) (User, *gorm.DB) {
 
 // UpdateLoginTime 更新使用者最後登入時間
 func UpdateLoginTime(userID int64) *gorm.DB {
-	var user User = User{ID: userID}
+	var user = User{ID: userID}
 	res := db.Model(&user).Where(&user).Update("LastLoginTime", time.Now().Unix())
 	return res
 }
 
 // GetNotActUserByToken 根據 Activate token 查詢 Not Activated User
 func GetNotActUserByToken(actToken string) (NotActivatedUser, *gorm.DB) {
-	var notActUser NotActivatedUser = NotActivatedUser{ActaivateToken: actToken}
+	var notActUser = NotActivatedUser{ActaivateToken: actToken}
 	res := db.Model(&notActUser).Where(&notActUser).Limit(1).Find(&notActUser)
 	return notActUser, res
 }
 
-// DeleteNotActUserByToken 根據 Activate token 查詢 Not Activated User
+// DeleteNotActUserByLoginName 根據 loginName 刪除 NotActUser 紀錄
 func DeleteNotActUserByLoginName(loginName string) *gorm.DB {
 	var notActUser NotActivatedUser
 	notActUser.LoginName = loginName
@@ -177,11 +168,12 @@ func DeleteNotActUserByLoginName(loginName string) *gorm.DB {
 	return res
 }
 
+// ActivateUser avtivate a not activated user
 func ActivateUser(notActUser NotActivatedUser) (int64, *gorm.DB) {
 	// 遷移資料從 NotActivatedUser 到 User
 	var res *gorm.DB
 	notActUser.MailVaild = true
-	var currentTime int64 = time.Now().Unix()
+	var currentTime = time.Now().Unix()
 	notActUser.User.Email = notActUser.NotActEmail
 	notActUser.CreatedAt = currentTime
 	res = db.Create(&notActUser.User)

@@ -28,17 +28,21 @@ func AuthRequired(c *gin.Context) {
 
 // siteOwnerRegister (POST)
 func siteOwnerRegister(c *gin.Context) {
-	if OwnerRegistered {
+	var err error
+	if ownerRegistered {
 		c.String(http.StatusNotFound, "404 page not found")
 	} else {
-		var inputJson SignupInfo
-		c.BindJSON(&inputJson)
+		var inputJSON SignupInfo
+		err = c.BindJSON(&inputJSON)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Bad request data"})
+		}
 
-		id, _, errList := databaseoperation.CreateUser(inputJson.LoginName, inputJson.ShowName, inputJson.Email, inputJson.Password, 1, false)
+		id, _, errList := databaseoperation.CreateUser(inputJSON.LoginName, inputJSON.ShowName, inputJSON.Email, inputJSON.Password, 1, false)
 
 		if len(errList) == 0 {
 			databaseoperation.UpdateSetting("OwnerRegistered", strconv.FormatBool(true))
-			OwnerRegistered = true
+			ownerRegistered = true
 		}
 
 		res := make(map[string]interface{})
@@ -52,19 +56,23 @@ func siteOwnerRegister(c *gin.Context) {
 
 // register (POST)
 func register(c *gin.Context) {
+	var err error
 	var res *gorm.DB
-	var inputJson SignupInfo
-	c.BindJSON(&inputJson)
+	var inputJSON SignupInfo
+	err = c.BindJSON(&inputJSON)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Bad request data"})
+	}
 
 	var requireEmailActivate bool
 	requireEmailActivate, _ = strconv.ParseBool(webSetting["RequireEmailActivate"])
-	id, actToken, errList := databaseoperation.CreateUser(inputJson.LoginName, inputJson.ShowName, inputJson.Email, inputJson.Password, 3, requireEmailActivate)
+	id, actToken, errList := databaseoperation.CreateUser(inputJSON.LoginName, inputJSON.ShowName, inputJSON.Email, inputJSON.Password, 3, requireEmailActivate)
 
 	if requireEmailActivate && len(errList) == 0 {
 		var senderEmailAdrFormat = `"Simple Image Hosting" <` + webSetting["SenderEmailAddress"] + `>`
-		var emailTitle string = "Simple Image Hosting 註冊認證"
-		var activateLink string = "https://" + webSetting["Hostname"] + "/account-activate/" + actToken
-		var bodyText string = `
+		var emailTitle = "Simple Image Hosting 註冊認證"
+		var activateLink = "https://" + webSetting["Hostname"] + "/account-activate/" + actToken
+		var bodyText = `
 		<html>
   		<head>
 		<meta http-equiv="content-type" content="text/html; charset=utf-8">
@@ -77,23 +85,22 @@ func register(c *gin.Context) {
 		<a href="` + activateLink + `" target="_blank">` + activateLink + `</a><br>
 		</body>`
 
-		err := common.GomailSender(senderEmailAdrFormat, inputJson.Email, emailTitle, bodyText, webSetting["SenderEmailServer"], webSetting["SenderEmailUser"], webSetting["SenderEmailPassword"])
+		err := common.GomailSender(senderEmailAdrFormat, inputJSON.Email, emailTitle, bodyText, webSetting["SenderEmailServer"], webSetting["SenderEmailUser"], webSetting["SenderEmailPassword"])
 		if err != nil {
 			errList = append(errList, 8)
 			fmt.Println(err.Error())
-			res = databaseoperation.DeleteNotActUserByLoginName(inputJson.LoginName)
+			res = databaseoperation.DeleteNotActUserByLoginName(inputJSON.LoginName)
 			if res.Error != nil {
 				errList = append(errList, 8)
 			}
 		}
 	}
 
-	returnJson := make(map[string]interface{})
-	returnJson["id"] = id
-	returnJson["err_list"] = errList
+	returnJSON := make(map[string]interface{})
+	returnJSON["id"] = id
+	returnJSON["err_list"] = errList
 
-	c.JSON(http.StatusOK, returnJson)
-	return
+	c.JSON(http.StatusOK, returnJSON)
 }
 
 // accountActivate (GET)
@@ -127,34 +134,35 @@ func accountActivate(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"user_id": newUserID, "show_name": notActUser.ShowName, "grade": notActUser.Grade, "msg": "Successfully activated."})
-	return
 }
 
 // signin (POST)
 func signin(c *gin.Context) {
-
-	var inputJson LoginInfo
-	c.BindJSON(&inputJson)
+	var err error
+	var inputJSON LoginInfo
+	err = c.BindJSON(&inputJSON)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Bad request data"})
+	}
 
 	session := sessions.Default(c)
 
 	// 檢查參數是否為空
-	if inputJson.LoginName == "" || inputJson.Password == "" {
+	if inputJSON.LoginName == "" || inputJSON.Password == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Parameters can't be empty"})
 		return
 	}
 
 	var loginUser databaseoperation.User
 	var res *gorm.DB
-	var err error
-	loginUser, res = databaseoperation.GetUserByLoginName(inputJson.LoginName)
+	loginUser, res = databaseoperation.GetUserByLoginName(inputJSON.LoginName)
 	if res.Error != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 		return
 	}
 
 	// 檢查使用者名稱和密碼是否正確
-	err = bcrypt.CompareHashAndPassword(loginUser.PwdHash, []byte(inputJson.Password))
+	err = bcrypt.CompareHashAndPassword(loginUser.PwdHash, []byte(inputJSON.Password))
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 		return
@@ -212,12 +220,12 @@ func myinfo(c *gin.Context) {
 		return
 	}
 
-	var avatarUrl string
+	var avatarURL string
 	if user.Avatar == "" {
-		avatarUrl = "/Avatars/default.png"
+		avatarURL = "/Avatars/default.png"
 	}
 
-	c.JSON(http.StatusOK, gin.H{"id": id, "show_name": user.ShowName, "avatar": avatarUrl, "grade": user.Grade})
+	c.JSON(http.StatusOK, gin.H{"id": id, "show_name": user.ShowName, "avatar": avatarURL, "grade": user.Grade})
 }
 
 func getUserInfo(c *gin.Context) {
@@ -236,9 +244,9 @@ func getUserInfo(c *gin.Context) {
 		return
 	}
 
-	var avatarUrl string
+	var avatarURL string
 	if user.Avatar == "" {
-		avatarUrl = "/Avatars/default.png"
+		avatarURL = "/Avatars/default.png"
 	}
-	c.JSON(http.StatusOK, gin.H{"show_name": user.ShowName, "avatar": avatarUrl, "introduction": user.Introduction})
+	c.JSON(http.StatusOK, gin.H{"show_name": user.ShowName, "avatar": avatarURL, "introduction": user.Introduction})
 }

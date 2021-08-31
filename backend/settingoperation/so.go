@@ -9,6 +9,7 @@ import (
 	"gopkg.in/ini.v1"
 )
 
+// SettingProperties 設定資料的 struct
 type SettingProperties struct {
 	Server struct {
 		Host        string
@@ -28,11 +29,12 @@ type SettingProperties struct {
 	}
 }
 
+// ReadConfFile 讀取設定檔案
 func ReadConfFile() (SettingProperties, error) {
-	var settingFilePath string = "setting.conf"
+	var settingFilePath = "setting.conf"
 	var cfg *ini.File
 	var res SettingProperties
-	var hasError bool = false
+	var hasError = false
 
 	// 檢查 setting.conf 是否存在
 	if info, err := os.Stat(settingFilePath); err == nil {
@@ -67,15 +69,12 @@ func ReadConfFile() (SettingProperties, error) {
 				case -1:
 					hasError = true
 					fmt.Println(err.Error())
-					break
 				case 0:
 					hasError = true
 					fmt.Println("Error: Server ImgSaveDir \"" + res.Server.FileSaveDir + "\" 不存在")
-					break
 				case 1:
 					hasError = true
 					fmt.Println("Error: Server ImgSaveDir \"" + res.Server.FileSaveDir + "\" 是個檔案")
-					break
 				case 2:
 					// 正確 do nothing
 					break
@@ -138,9 +137,14 @@ func ReadConfFile() (SettingProperties, error) {
 		dbSection.Key("User")
 		dbSection.Key("Password")
 		dbSection.Key("DBName")
-		cfg.SaveTo(settingFilePath)
-		fmt.Println("找不到檔案 setting.conf， 由程式自動生成，需要進行編輯")
+		err = cfg.SaveTo(settingFilePath)
 		hasError = true
+		if err != nil {
+			fmt.Println("自動生成設定檔發生錯誤")
+		} else {
+			fmt.Println("找不到檔案 setting.conf， 由程式自動生成，需要進行編輯")
+		}
+
 	} else {
 		// 其他錯誤
 		fmt.Println("check ", settingFilePath, " status err:", err)
@@ -148,8 +152,6 @@ func ReadConfFile() (SettingProperties, error) {
 
 	if hasError {
 		return res, errors.New("設定檔有錯誤")
-	} else {
-		return res, nil
 	}
-
+	return res, nil
 }

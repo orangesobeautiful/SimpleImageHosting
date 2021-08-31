@@ -10,9 +10,9 @@ import (
 var db *gorm.DB
 var hashID *hashids.HashID
 
-var emailActTokenRandLen int = 32
+var emailActTokenRandLen = 32
 
-// SetDB set databae
+// SetHashIDData 設定 HashID 物件
 func SetHashIDData(salt string, minLen int) error {
 	hashIDData := hashids.NewData()
 	hashIDData.Salt = salt
@@ -28,11 +28,24 @@ func SetDB(inputdb *gorm.DB) {
 }
 
 // InitDatabase 初始化資料庫
-func InitDatabase() {
-	db.AutoMigrate(Setting{})
-	db.AutoMigrate(User{})
-	db.AutoMigrate(Image{})
-	db.AutoMigrate(NotActivatedUser{})
+func InitDatabase() error {
+	var err error
+	err = db.AutoMigrate(Setting{})
+	if err != nil {
+		return err
+	}
+	err = db.AutoMigrate(User{})
+	if err != nil {
+		return err
+	}
+	err = db.AutoMigrate(Image{})
+	if err != nil {
+		return err
+	}
+	err = db.AutoMigrate(NotActivatedUser{})
+	if err != nil {
+		return err
+	}
 
 	//讀取 setting 列表 (第0項: setting name，第1項: 讀取不到時創建的預設值)
 	settingTable := [][2]string{{"SessionSecretKey", ""},
@@ -50,4 +63,5 @@ func InitDatabase() {
 		}
 	}
 
+	return nil
 }

@@ -9,13 +9,12 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"net/http"
 	"os"
 	"path"
 	"strconv"
 
 	"github.com/gin-contrib/sessions"
-	"github.com/gin-contrib/sessions/cookie"
+	"github.com/gin-contrib/sessions/memstore"
 	"github.com/gin-gonic/gin"
 	"github.com/speps/go-hashids/v2"
 	"gorm.io/driver/mysql"
@@ -27,21 +26,22 @@ const (
 	userkey = "user"
 )
 
-var mdWidth int = 700
+var mdWidth = 700
 
 var fileSaveDir string
-var avatarDirectory string = "Avatars"
-var imageDirectory string = "ImagesDirect"
-var imageMDDirectory string = "Medium"
+var avatarDirectory = "Avatars"
+var imageDirectory = "ImagesDirect"
+var imageMDDirectory = "Medium"
 var avatarSaveDir string
 var imageSaveDir string
 
 var hashID *hashids.HashID
 
-var OwnerRegistered bool
+var ownerRegistered bool
 
 var webSetting map[string]string
 
+// Start start server
 func Start() {
 	webSetting = make(map[string]string)
 	var setting = readSetting()
@@ -95,8 +95,8 @@ func checkDictoryStruct() {
 	fmt.Println("檢查目錄結構")
 	var err error
 	var resCode int
-	var imageMDSaveDir string = path.Join(imageSaveDir, imageMDDirectory)
-	var pathList []string = []string{avatarSaveDir, imageSaveDir, imageMDSaveDir}
+	var imageMDSaveDir = path.Join(imageSaveDir, imageMDDirectory)
+	var pathList = []string{avatarSaveDir, imageSaveDir, imageMDSaveDir}
 
 	for _, path := range pathList {
 		resCode, err = common.CheckPath(path)
@@ -108,12 +108,10 @@ func checkDictoryStruct() {
 			if err != nil {
 				panic("創建 " + path + " 目錄時失敗 " + err.Error())
 			}
-			break
 		case 1:
 			panic("創建 " + path + " 目錄時失敗，因為有相同名稱的檔案")
 		case 2:
 			// 已經創建
-			break
 		default:
 			panic("Unknow CheckPath Result Code")
 		}
@@ -122,6 +120,7 @@ func checkDictoryStruct() {
 }
 
 func initDatabase(setting settingoperation.SettingProperties, ioWriterList []io.Writer) {
+	var err error
 	fmt.Println("設定資料庫")
 	var logLV logger.LogLevel
 	if setting.Server.DebugMode {
@@ -144,7 +143,10 @@ func initDatabase(setting settingoperation.SettingProperties, ioWriterList []io.
 	}
 
 	databaseoperation.SetDB(db)
-	databaseoperation.InitDatabase()
+	err = databaseoperation.InitDatabase()
+	if err != nil {
+		panic(err)
+	}
 }
 
 func initServer(setting settingoperation.SettingProperties, ioWriterList []io.Writer) *gin.Engine {
@@ -179,7 +181,7 @@ func initServer(setting settingoperation.SettingProperties, ioWriterList []io.Wr
 		}
 	}
 	hashIDData.Salt = hashIDSlat
-	var minLen int = 5
+	var minLen = 5
 	hashIDData.MinLength = minLen
 	err = databaseoperation.SetHashIDData(hashIDSlat, minLen)
 	if err != nil {
@@ -215,7 +217,7 @@ func initServer(setting settingoperation.SettingProperties, ioWriterList []io.Wr
 	if res.Error != nil {
 		panic(err)
 	}
-	OwnerRegistered, err = strconv.ParseBool(orStr)
+	ownerRegistered, err = strconv.ParseBool(orStr)
 	if err != nil {
 		panic(err)
 	}
@@ -247,7 +249,7 @@ func initServer(setting settingoperation.SettingProperties, ioWriterList []io.Wr
 	}
 
 	r := gin.Default()
-	store := cookie.NewStore([]byte(secretKey))
+	store := memstore.NewStore([]byte(secretKey))
 	r.Use(sessions.Sessions("lgsc", store))
 	setupRouter(r)
 
@@ -273,25 +275,7 @@ func setupRouter(r *gin.Engine) {
 	apiRouter.POST("/image", uploadImage)
 	apiRouter.PATCH("/image/:hashID", editImage)
 	apiRouter.DELETE("/image/:hashID", deleteImage)
-	apiRouter.POST("/test", test)
-	if !OwnerRegistered {
+	if !ownerRegistered {
 		apiRouter.POST("/site-owner-register", siteOwnerRegister)
 	}
-}
-
-type TestType struct {
-	TestInt    int
-	TestString string
-	TestBool   bool
-}
-
-func test(c *gin.Context) {
-	//var testJson TestType
-	var testMap map[string]interface{}
-	c.BindJSON(&testMap)
-	for k, v := range testMap {
-		fmt.Println(fmt.Sprintf("%s: %s", k, v))
-	}
-
-	c.String(http.StatusOK, "ok")
 }

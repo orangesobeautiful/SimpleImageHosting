@@ -6,7 +6,9 @@ import (
 	"gorm.io/gorm"
 )
 
-func CreateImage(title string, description string, imageType string, width int, height int, OwnerId int64) (int64, string, error) {
+// CreateImage 創建一筆新的 Image 紀錄
+// return id, hashID, error
+func CreateImage(title string, description string, imageType string, width int, height int, OwnerID int64) (int64, string, error) {
 	//把資料寫入資料庫
 	var newImage Image
 	newImage.ID = 0
@@ -15,7 +17,7 @@ func CreateImage(title string, description string, imageType string, width int, 
 	newImage.Type = imageType
 	newImage.Width = width
 	newImage.Height = height
-	newImage.OwnerID = OwnerId
+	newImage.OwnerID = OwnerID
 	newImage.UpdateAt = time.Now().Unix()
 	newImage.CreateAt = time.Now().Unix()
 
@@ -35,27 +37,31 @@ func CreateImage(title string, description string, imageType string, width int, 
 	return newImage.ID, hashID, res.Error
 }
 
+// GetImageByID 藉由 id 獲取 image 資料
 func GetImageByID(id int64) (Image, *gorm.DB) {
 	var image Image
 	res := db.Where(&Image{ID: id}, "ID").Find(&image)
 	return image, res
 }
 
+// GetImageListByOwnerID 藉由 userID 獲取其擁有的圖片資料
 func GetImageListByOwnerID(ownerID int64) ([]Image, *gorm.DB) {
 	var imageList []Image
 	res := db.Where(&Image{OwnerID: ownerID}, "OwnerID").Find(&imageList)
 	return imageList, res
 }
 
+// UpdateImage 更新圖片資料，欄位由 updateData 的 key value 決定
 func UpdateImage(id int64, updateData map[string]interface{}) *gorm.DB {
-	var image Image = Image{ID: id}
+	var image = Image{ID: id}
 	updateData["UpdateAt"] = time.Now().Unix()
 	res := db.Model(&image).Updates(updateData)
 	return res
 }
 
+// DeleteImage 刪除圖片紀錄
 func DeleteImage(id int64) *gorm.DB {
-	var image Image = Image{ID: id}
+	var image = Image{ID: id}
 	res := db.Where(&Image{ID: id}, "ID").Delete(&image)
 	return res
 }
