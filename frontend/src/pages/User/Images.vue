@@ -21,6 +21,7 @@
         v-for="image in imageList"
         :inputImgUrl="image.md_url"
         :inputImgHashID="image.hash_id"
+        :inputImgTitle="image.title"
         :key="image.key"
       >
       </user-image-card>
