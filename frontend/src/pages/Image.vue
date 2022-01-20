@@ -5,19 +5,16 @@
     <!--normal page-->
     <div v-if="imageDataLoaded">
       <div class="row">
-        <q-img
-          contain
-          class="image-block"
-          :src="originalUrl"
-          native-context-menu
-        />
+        <q-img fit="contain" class="image-block" :src="originalUrl" />
       </div>
       <div class="column q-pa-md q-gutter-md">
         <div class="row">
           <div class="row items-center">
-            <q-avatar class="q-mr-sm" size="40px">
-              <q-img :src="ownerAvatar" />
-            </q-avatar>
+            <q-btn class="q-mr-sm" round @click="push.userImagesPage(ownerID)">
+              <q-avatar size="42px">
+                <q-img :src="ownerAvatar" />
+              </q-avatar>
+            </q-btn>
             <div class="row">
               <div class="owner-name-text q-mr-md">{{ ownerName }}</div>
               <div
@@ -115,14 +112,14 @@
     <div v-if="showErrPage" class="column err-colunm items-center">
       <div class="err-msg">
         <div class="text-center text-h5">
-          {{ msgTitle }}
+          {{ errTitle }}
         </div>
         <q-space style="height: 20px" />
         <div class="row justify-around err-redirect-link">
-          <div class="text-h6 text-center" @click="goHomePage">
+          <div class="text-h6 text-center" @click="push.homePage()">
             返回首頁
           </div>
-          <div class="text-h6 text-center" @click="goPreviousPage">
+          <div class="text-h6 text-center" @click="push.previousPage()">
             上一頁
           </div>
         </div>
@@ -131,304 +128,361 @@
   </q-page>
 </template>
 
-<style lang="sass" scoped>
-.image-block
-  max-height: calc(100vh - 50px)
-  max-width: 100vw
-.owner-name-text
-    font-size: 15px
-    line-height: 40px
-.link-input
-    width: 368px
-.err-colunm
-  width: 100%
-.err-msg
-  margin-top: 24px
-  margin-buttom: 24px
-  width: 400px
-.err-redirect-link
-  color: #337f15
+<style lang="scss" scoped>
+.image-block {
+  max-height: calc(100vh - 50px);
+  max-width: 100vw;
+}
+.owner-name-text {
+  font-size: 15px;
+  line-height: 40px;
+}
+.link-input {
+  width: 368px;
+}
+.err-colunm {
+  width: 100%;
+}
+.err-msg {
+  margin-top: 24px;
+  margin-bottom: 24px;
+  width: 400px;
+}
+.err-redirect-link {
+  color: #337f15;
+}
 </style>
 
-<script>
-import { copyToClipboard } from "quasar";
-import LoadingView from "../components/LoadingView.vue";
+<script lang="ts">
+import { ref, defineComponent } from 'vue';
+import { useRoute } from 'vue-router';
+import axios from 'axios';
+import { copyToClipboard, useQuasar } from 'quasar';
+import { api } from 'boot/axios';
+import { useStore } from 'src/store';
+import { Push } from 'src/lib/router/pushPage';
+import { json } from 'src/lib/common/type';
+import LoadingView from '../components/LoadingView.vue';
 
-export default {
-  name: "PageImage",
-  data() {
-    return {
-      showLoading: true,
-      showErrPage: false,
-      imageDataLoaded: false,
-      errTitle: "",
-      hashID: this.$route.params.imgHashID,
-      title: "",
-      ownerID: "",
-      ownerName: "",
-      ownerAvatar: "",
-      description: "",
-      originalUrl: "",
-      mdUrl: "",
-      host: location.host,
-      createDateStr: "",
-      imageLinks: Array(),
-      tabRef: "about",
-      editTitle: "",
-      editDescription: "",
-      editDialog: false
-    };
-  },
+export default defineComponent({
+  name: 'PageImage',
   components: {
-    "loading-view": LoadingView
+    'loading-view': LoadingView,
   },
-  created() {
-    this.getImagesData();
-  },
-  methods: {
-    initStatus() {
-      this.imageDataLoaded = false;
-      this.showLoading = true;
-      this.showErrPage = false;
-    },
-    errPage() {
-      this.showLoading = false;
-      this.showErrPage = true;
-    },
-    normalPage() {
-      this.showLoading = false;
-      this.imageDataLoaded = true;
-    },
-    copyURL(linkIndex) {
-      copyToClipboard(this.imageLinks[linkIndex].url)
-        .then(() => {
-          // success!
-        })
-        .catch(() => {
-          // fail
-        });
-      this.$q.notify({
-        message: "複製成功",
-        color: "green",
-        timeout: "500"
-      });
-    },
-    async getImagesData() {
-      var path = "/api/image/" + this.hashID;
-      await this.$axios
+  setup() {
+    const route = useRoute();
+    const $q = useQuasar();
+    const store = useStore();
+    const push = new Push();
+
+    const showLoading = ref(true);
+    const showErrPage = ref(false);
+    const imageDataLoaded = ref(false);
+    const errTitle = ref('');
+    const hashID = ref(route.params.imgHashID as string);
+    const title = ref('');
+    const ownerID = ref(-1);
+    const ownerName = ref('');
+    const ownerAvatar = ref('');
+    const description = ref('');
+    const originalUrl = ref('');
+    const mdUrl = ref('');
+    const host = ref(location.host);
+    const createDateStr = ref('');
+    interface imageLink {
+      name: string;
+      url: string;
+    }
+    const imageLinks = ref([] as imageLink[]);
+    const tabRef = ref('about');
+    const editTitle = ref('');
+    const editDescription = ref('');
+    const editDialog = ref(false);
+
+    interface imageDataJson {
+      title: string;
+      owner_name: string;
+      owner_id: number;
+      owner_avatar: string;
+      description: string;
+      original_url: string;
+      md_url?: string;
+      create_at: number;
+    }
+
+    async function getImagesData() {
+      let path = '/image/' + hashID.value;
+      await api
         .get(path)
-        .then(res => {
-          var data = res.data;
-          this.title = data["title"];
-          this.ownerName = data["owner_name"];
-          this.ownerID = data["owner_id"];
-          this.ownerAvatar = data["owner_avatar"];
-          this.description = data["description"];
-          this.originalUrl = data["original_url"];
-          if (data.md_url != null) {
-            this.mdUrl = data["md_url"];
+        .then((res) => {
+          let data = res.data as imageDataJson;
+          title.value = data['title'];
+          ownerName.value = data['owner_name'];
+          ownerID.value = data['owner_id'];
+          ownerAvatar.value = data['owner_avatar'];
+          description.value = data['description'];
+          originalUrl.value = data['original_url'];
+          if (data.md_url) {
+            mdUrl.value = data['md_url'];
           }
 
           // 時間處理
-          var create_millsec = data["create_at"] * 1000;
-          var dateObject = new Date(create_millsec);
-          var humanDateFormat = dateObject.toLocaleString();
-          this.createDateStr = humanDateFormat;
+          let create_millsec = data['create_at'] * 1000;
+          let dateObject = new Date(create_millsec);
+          let humanDateFormat = dateObject.toLocaleString();
+          createDateStr.value = humanDateFormat;
 
           //連結處理
-          var origin = location.origin;
-          this.imageLinks.push({
-            name: "圖片連結",
-            url: origin + "/image/" + this.hashID
+          let origin = location.origin;
+          imageLinks.value.push({
+            name: '圖片連結',
+            url: origin + '/image/' + hashID.value,
           });
-          this.imageLinks.push({
-            name: "圖片URL",
-            url: origin + "/" + this.originalUrl
+          imageLinks.value.push({
+            name: '圖片URL',
+            url: origin + '/' + originalUrl.value,
           });
-          if (this.mdUrl != "") {
-            this.imageLinks.push({
-              name: "縮圖URL",
-              url: origin + "/" + this.mdUrl
+          if (mdUrl.value != '') {
+            imageLinks.value.push({
+              name: '縮圖URL',
+              url: origin + '/' + mdUrl.value,
             });
           }
+          // 顯示正常頁面
+          normalPage();
+        })
+        .catch((error) => {
+          if (axios.isAxiosError(error)) {
+            errTitle.value = '發生錯誤';
+            if (error.response) {
+              switch (error.response.status) {
+                //Not Found
+                case 404:
+                  errTitle.value = '您訪問的連結錯誤或是圖片已被刪除';
+                  break;
+              }
+            }
+            // 顯示錯誤頁面
+            errPage();
+          }
+        });
+    }
+    void getImagesData();
 
-          this.normalPage();
-        })
-        .catch(error => {
-          if (error.request) {
-            this.msgTitle = "發生錯誤";
-            switch (error.response.status) {
-              //Internal Server Error
-              case 500:
-                break;
-              //Unauthorized
-              case 401:
-                break;
-              //Not Found
-              case 400:
-              case 404:
-                this.msgTitle = "您訪問的連結錯誤或是圖片已被刪除";
-                break;
-            }
-            this.errPage();
-          } else if (error.response) {
-          }
-        });
-    },
-    async deleteConfirm() {
-      this.$q
-        .dialog({
-          title: "刪除確認",
-          message: "確定要刪除嗎?",
-          ok: "刪除",
-          cancel: "取消",
-          focus: "cancel"
-        })
-        .onOk(() => {
-          this.deleteImage();
-        })
-        .onCancel(() => {
-          //do nothing
-        });
-    },
-    async deleteImage() {
-      var path = "/api/image/" + this.hashID;
-      await this.$axios
-        .delete(path)
-        .then(() => {
-          this.$q.notify({
-            message: "刪除成功",
-            color: "green",
-            timeout: "500",
-            position: "center"
-          });
-          //回到個人介面
-          this.$router.push("/user/" + this.$store.state.user.id + "/images");
-        })
-        .catch(error => {
-          if (error.request) {
-          } else if (error.response) {
-            switch (error.response.status) {
-              //Internal Server Error
-              case 500:
-                break;
-              //Unauthorized
-              case 401:
-                this.$q.notify({
-                  message: "你需要登入",
-                  color: "red",
-                  timeout: "1500",
-                  position: "center"
-                });
-                break;
-              //Forbidden
-              case 403:
-                this.$q.notify({
-                  message: "權限不符",
-                  color: "red",
-                  timeout: "1500",
-                  position: "center"
-                });
-                break;
-            }
-          }
-        });
-    },
-    showEditDialog() {
-      this.editTitle = this.title;
-      this.editDescription = this.description;
-      this.editDialog = true;
-    },
-    async editImageInfo() {
-      var putData = {};
-      var datahasChanged = false;
-      if (this.title != this.editTitle) {
+    async function editImageInfo() {
+      var patchData: json = {};
+      let datahasChanged = false;
+      if (title.value != editTitle.value) {
         datahasChanged = true;
-        putData["title"] = this.editTitle;
+        patchData['title'] = editTitle.value;
       }
-      if (this.description != this.editDescription) {
+      if (description.value != editDescription.value) {
         datahasChanged = true;
-        putData["description"] = this.editDescription;
+        patchData['description'] = editDescription.value;
       }
 
       if (datahasChanged) {
-        var path = "/api/image/" + this.hashID;
+        var path = '/image/' + hashID.value;
 
-        await this.$axios
-          .patch(path, putData)
+        await api
+          .patch(path, patchData)
           .then(() => {
-            this.$q.notify({
-              message: "修改成功",
-              color: "green",
-              persistent: true,
-              timeout: "500",
-              position: "center"
+            $q.notify({
+              message: '修改成功',
+              color: 'green',
+              timeout: 500,
+              position: 'center',
+              //persistent: true,
             });
-            this.title = this.editTitle;
-            this.description = this.editDescription;
+            title.value = editTitle.value;
+            description.value = editDescription.value;
           })
-          .catch(error => {
-            console.log("has error");
+          .catch((error) => {
+            console.log('has error');
             console.log(error);
-            if (error.request) {
-              console.log("error request");
-            } else if (error.response) {
-              console.log("error response");
-              switch (error.response.status) {
-                //Internal Server Error
-                case 500:
-                  this.$q.notify({
-                    message: "伺服端錯誤",
-                    color: "red",
-                    timeout: "1500",
-                    position: "center"
-                  });
-                  break;
-                //BadRequest
-                case 400:
-                  this.$q.notify({
-                    message: "錯誤的圖片ID",
-                    color: "red",
-                    timeout: "1500",
-                    position: "center"
-                  });
-                  break;
-                //Unauthorized
-                case 401:
-                  this.$q.notify({
-                    message: "你需要登入",
-                    color: "red",
-                    timeout: "1500",
-                    position: "center"
-                  });
-                  break;
-                //Forbidden
-                case 403:
-                  this.$q.notify({
-                    message: "權限不符",
-                    color: "red",
-                    timeout: "1500",
-                    position: "center"
-                  });
-                  break;
+            if (axios.isAxiosError(error)) {
+              if (error.response) {
+                console.log('error response');
+                switch (error.response.status) {
+                  //Internal Server Error
+                  case 500:
+                    $q.notify({
+                      message: '伺服端錯誤',
+                      color: 'red',
+                      timeout: 1500,
+                      position: 'center',
+                    });
+                    break;
+                  //BadRequest
+                  case 400:
+                    $q.notify({
+                      message: '錯誤的圖片ID',
+                      color: 'red',
+                      timeout: 1500,
+                      position: 'center',
+                    });
+                    break;
+                  //Unauthorized
+                  case 401:
+                    $q.notify({
+                      message: '你需要登入',
+                      color: 'red',
+                      timeout: 1500,
+                      position: 'center',
+                    });
+                    break;
+                  //Forbidden
+                  case 403:
+                    $q.notify({
+                      message: '權限不符',
+                      color: 'red',
+                      timeout: 1500,
+                      position: 'center',
+                    });
+                    break;
+                }
               }
             }
           });
       } else {
-        this.$q.notify({
-          message: "資料沒有變動",
-          color: "red",
-          timeout: "1500",
-          position: "center"
+        $q.notify({
+          message: '資料沒有變動',
+          color: 'red',
+          timeout: 1500,
+          position: 'center',
         });
       }
-    },
-    goHomePage() {
-      this.$router.push("/");
-    },
-    goPreviousPage() {
-      this.$router.go(-1);
     }
-  }
-};
+
+    async function deleteImage() {
+      let path = '/image/' + hashID.value;
+      await api
+        .delete(path)
+        .then(() => {
+          $q.notify({
+            message: '刪除成功',
+            color: 'green',
+            timeout: 500,
+            position: 'center',
+          });
+          //回到個人介面
+          push.userImagesPage(store.state.user.id);
+        })
+        .catch((error) => {
+          if (axios.isAxiosError(error)) {
+            if (error.response) {
+              switch (error.response.status) {
+                //Internal Server Error
+                case 500:
+                  $q.notify({
+                    message: '伺服器內部錯誤',
+                    color: 'red',
+                    timeout: 1500,
+                    position: 'center',
+                  });
+                  break;
+                  break;
+                //Unauthorized
+                case 401:
+                  $q.notify({
+                    message: '你需要登入',
+                    color: 'red',
+                    timeout: 1500,
+                    position: 'center',
+                  });
+                  break;
+                //Forbidden
+                case 403:
+                  $q.notify({
+                    message: '權限不符',
+                    color: 'red',
+                    timeout: 1500,
+                    position: 'center',
+                  });
+                  break;
+              }
+            }
+          }
+        });
+    }
+
+    // 載入狀態處理 (loading, error ...)
+    function errPage() {
+      showLoading.value = false;
+      showErrPage.value = true;
+    }
+    function normalPage() {
+      showLoading.value = false;
+      imageDataLoaded.value = true;
+    }
+    function showEditDialog() {
+      editTitle.value = title.value;
+      editDescription.value = description.value;
+      editDialog.value = true;
+    }
+
+    function copyURL(linkIndex: number) {
+      copyToClipboard(imageLinks.value[linkIndex].url)
+        .then(() => {
+          // success!
+          $q.notify({
+            message: '複製成功',
+            color: 'green',
+            timeout: 500,
+          });
+        })
+        .catch(() => {
+          // fail
+          $q.notify({
+            message: '複製失敗',
+            color: 'red',
+            timeout: 500,
+          });
+        });
+    }
+
+    function deleteConfirm() {
+      $q.dialog({
+        title: '刪除確認',
+        message: '確定要刪除嗎?',
+        ok: '刪除',
+        cancel: '取消',
+        focus: 'cancel',
+      })
+        .onOk(() => {
+          void deleteImage();
+        })
+        .onCancel(() => {
+          //do nothing
+        });
+    }
+
+    return {
+      push,
+      showLoading,
+      showErrPage,
+      imageDataLoaded,
+      errTitle,
+      hashID,
+      title,
+      ownerID,
+      ownerName,
+      ownerAvatar,
+      description,
+      originalUrl,
+      mdUrl,
+      host,
+      createDateStr,
+      imageLinks,
+      tabRef,
+      editTitle,
+      editDescription,
+      editDialog,
+      copyURL,
+      showEditDialog,
+      deleteConfirm,
+      editImageInfo,
+    };
+  },
+});
 </script>

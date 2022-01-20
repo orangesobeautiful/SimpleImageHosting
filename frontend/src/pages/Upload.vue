@@ -17,7 +17,7 @@
             label="確認"
             color="primary"
             v-close-popup
-            @click="redirectHomePage"
+            @click="push.homePage()"
           />
         </q-card-actions>
       </q-card>
@@ -43,51 +43,57 @@
 </style>
 
 <script>
-import LoadingView from "../components/LoadingView.vue";
+import { ref, defineComponent, watch } from 'vue';
+import { useStore } from 'src/store';
+import { Push } from 'src/lib/router/pushPage';
+import LoadingView from '../components/LoadingView.vue';
 
-export default {
-  name: "PageUpload",
-  props: [],
-  data() {
-    return {
-      userState: this.$store.state.user,
-      showLoading: true,
-      showMsg: false,
-      msgTitle: "",
-      msgContent: "",
-      showPage: false
-    };
-  },
+export default defineComponent({
+  name: 'PageUpload',
   components: {
-    "loading-view": LoadingView
+    'loading-view': LoadingView,
   },
-  created() {
-    (this.userState = this.$store.state.user), this.pageLoad();
-  },
-  watch: {
-    "$store.state.user.dataLoaded": function() {
-      this.pageLoad();
-    }
-  },
-  methods: {
-    pageLoad() {
-      if (this.userState.dataLoaded) {
-        this.showLoading = false;
-        if (this.userState.id < 0) {
+  setup() {
+    const store = useStore();
+    const userState = store.state.user;
+    const push = new Push();
+
+    const showLoading = ref(true);
+    const showMsg = ref(false);
+    const msgTitle = ref('');
+    const msgContent = ref('');
+    const showPage = ref(false);
+
+    function pageLoad() {
+      if (userState.dataLoaded) {
+        showLoading.value = false;
+        if (userState.id < 0) {
           // not login
-          this.msgTitle = "您尚未登入";
-          this.msgContent = "需要登入才能上傳圖片";
-          this.showMsg = true;
+          msgTitle.value = '您尚未登入';
+          msgContent.value = '需要登入才能上傳圖片';
+          showMsg.value = true;
         } else {
-          this.showPage = true;
+          showPage.value = true;
         }
       } else {
-        this.showLoading = true;
+        showLoading.value = true;
       }
-    },
-    redirectHomePage() {
-      this.$router.push("/");
     }
-  }
-};
+    pageLoad();
+
+    watch(userState.dataLoaded, () => {
+      pageLoad();
+    });
+
+    return {
+      showLoading,
+      showMsg,
+      msgTitle,
+      msgContent,
+      showPage,
+      pageLoad,
+      push,
+    };
+  },
+});
 </script>

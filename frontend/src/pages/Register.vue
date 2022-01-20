@@ -34,7 +34,7 @@
             label="返回首頁"
             color="primary"
             v-close-popup
-            @click="redirectHomePage"
+            @click="push.homePage()"
           />
         </q-card-actions>
       </q-card>
@@ -58,12 +58,11 @@
               label="顯示名稱"
               bottom-slots
               hint="公開用的名稱，註冊後仍然可以更改"
-              lazy-rules
               :rules="[
-                val => 1 <= val.length || '長度需要在1~15個字元之間',
-                val => val.length <= 15 || '長度需要在1~15個字元之間'
+                (val) => 1 <= val.length || '長度需要在1~15個字元之間',
+                (val) => val.length <= 15 || '長度需要在1~15個字元之間',
               ]"
-              @input="formatVaild"
+              @update:model-value="formatVaild"
             />
           </div>
           <div class="column q-pa-sm">
@@ -75,12 +74,11 @@
               label="登入帳號"
               bottom-slots
               hint="登入用的帳號"
-              lazy-rules
               :rules="[
-                val => 4 <= val.length || '長度需要在4~30個字元之間',
-                val => val.length <= 30 || '長度需要在4~30個字元之間'
+                (val) => 4 <= val.length || '長度需要在4~30個字元之間',
+                (val) => val.length <= 30 || '長度需要在4~30個字元之間',
               ]"
-              @input="formatVaild"
+              @update:model-value="formatVaild"
             />
           </div>
           <div class="column q-pa-sm">
@@ -93,17 +91,16 @@
               label="電子郵件"
               bottom-slots
               hint="用來修改密碼或是找回密碼"
-              lazy-rules
               :rules="[
-                val => val.length <= 256 || '不支援長度超過256字元的電子郵件',
-                val => val.search(this.emailRule) != -1 || '電子郵件格式錯誤'
+                (val) => val.length <= 256 || '不支援長度超過256字元的電子郵件',
+                (val) => val.search(this.emailRule) != -1 || '電子郵件格式錯誤',
               ]"
-              @input="formatVaild"
+              @update:model-value="formatVaild"
             />
           </div>
           <div class="column q-pa-sm">
             <q-input
-              ref="passwordInput"
+              ref="passwordInputRef"
               outlined
               dense
               bg-color="grey-4"
@@ -112,12 +109,11 @@
               label="密碼"
               bottom-slots
               hint="長度最小6個字元"
-              lazy-rules
               :rules="[
-                val => 6 <= val.length || '密碼長度最小6個字元',
-                val => val == this.rePassword || '密碼不一樣'
+                (val) => 6 <= val.length || '密碼長度最小6個字元',
+                (val) => val == this.rePassword || '密碼不一樣',
               ]"
-              @input="
+              @update:model-value="
                 formatVaild();
                 passwordVaild();
               "
@@ -125,7 +121,7 @@
           </div>
           <div class="column q-pa-sm">
             <q-input
-              ref="rePasswordInput"
+              ref="rePasswordInputRef"
               outlined
               dense
               bg-color="grey-4"
@@ -133,10 +129,10 @@
               type="password"
               label="確認密碼"
               :rules="[
-                val => 6 <= val.length || '密碼長度最小6個字元',
-                val => val == this.password || '密碼不一樣'
+                (val) => 6 <= val.length || '密碼長度最小6個字元',
+                (val) => val == this.password || '密碼不一樣',
               ]"
-              @input="
+              @update:model-value="
                 formatVaild();
                 passwordVaild();
               "
@@ -148,7 +144,7 @@
             color="white"
             text-color="black"
             label="登入頁面"
-            @click="redirectSigninPage"
+            @click="push.signinPage()"
           />
           <q-btn
             color="deep-orange"
@@ -164,7 +160,7 @@
 </template>
 
 <style lang="scss" scoped>
-@import "../css/width.scss";
+@import '../css/width.scss';
 
 .register-container {
   @include xs-width {
@@ -196,162 +192,182 @@
 }
 </style>
 
-<script>
-export default {
-  name: "RegisterPage",
-  data() {
-    return {
-      requireEmailAct: false,
-      showName: "",
-      loginName: "",
-      email: "",
-      emailRule: /^\w+((-\w+)|(\.\w+))*\@[A-Za-z0-9]+((\.|-)[A-Za-z0-9]+)*\.[A-Za-z]+$/,
-      password: "",
-      rePassword: "",
-      registerEnable: false,
-      registerError: false,
-      registerErrMsgArray: [],
-      registerSuccess: false,
-      registerSuccessMsg: "",
-      id: -1,
-      errList: []
-    };
-  },
-  created() {
-    this.getServerInfo();
-  },
-  methods: {
-    passwordVaild() {
-      if (this.passwordEqual() && this.password.length >= 6) {
-        this.$refs.passwordInput.resetValidation();
-        this.$refs.rePasswordInput.resetValidation();
-      }
-    },
-    formatVaild() {
-      if (1 > this.showName.length || this.showName.length > 15) {
-        this.registerEnable = false;
-        return false;
-      }
-      if (4 > this.loginName.length || this.loginName.length > 30) {
-        this.registerEnable = false;
-        return false;
-      }
+<script lang="ts">
+import { ref, defineComponent } from 'vue';
+import { QInput } from 'quasar';
+import { api } from 'boot/axios';
+import { Push } from 'src/lib/router/pushPage';
 
-      if (this.email.length > 256 || this.email.search(this.emailRule) == -1) {
-        this.registerEnable = false;
-        return false;
-      }
-      if (!this.passwordEqual() || this.password.length < 6) {
-        this.registerEnable = false;
-        return false;
-      }
+export default defineComponent({
+  name: 'RegisterPage',
+  setup() {
+    const push = new Push();
 
-      this.registerEnable = true;
-      return true;
-    },
-    passwordEqual() {
-      if (this.password == this.rePassword) {
+    const requireEmailAct = ref(false);
+    const showName = ref('');
+    const loginName = ref('');
+    const email = ref('');
+    const emailRule =
+      /^\w+((-\w+)|(\.\w+))*\@[A-Za-z0-9]+((\.|-)[A-Za-z0-9]+)*\.[A-Za-z]+$/;
+    const password = ref('');
+    const passwordInputRef = ref(null);
+    const rePassword = ref('');
+    const rePasswordInputRef = ref(null);
+    const registerEnable = ref(false);
+    const registerError = ref(false);
+    const registerErrMsgArray = ref([] as string[]);
+    const registerSuccess = ref(false);
+    const registerSuccessMsg = ref('');
+    const id = ref(-1);
+    const errList = ref([]);
+
+    interface serverInfoDataJson {
+      require_email_activate: boolean;
+    }
+
+    async function getServerInfo() {
+      let path = '/server-info';
+      await api.get(path).then((res) => {
+        let data = res.data as serverInfoDataJson;
+        requireEmailAct.value = data['require_email_activate'];
+      });
+    }
+    void getServerInfo();
+
+    function passwordEqual() {
+      if (password.value == rePassword.value) {
         return true;
       } else {
         return false;
       }
-    },
-    redirectSigninPage() {
-      this.$router.push("/signin");
-    },
-    redirectHomePage() {
-      this.$router.push("/");
-    },
-    async getServerInfo() {
-      var path = "/api/server-info";
-      await this.$axios
-        .get(path)
-        .then(res => {
-          var data = res.data;
-          this.requireEmailAct = data["require_email_activate"];
-        })
-        .catch(error => {
-          if (error.request) {
-          } else if (error.response) {
-            switch (error.response.status) {
-              //Internal Server Error
-              case 500:
-                break;
-              //Unauthorized
-              case 401:
-                break;
-            }
-          }
-        });
-    },
-    async sendRegisterData() {
-      if (this.formatVaild()) {
-        var path = "/api/register";
-        await this.$axios
+    }
+
+    function passwordVaild() {
+      if (passwordEqual() && password.value.length >= 6) {
+        (passwordInputRef.value as unknown as QInput).resetValidation();
+        (rePasswordInputRef.value as unknown as QInput).resetValidation();
+      }
+    }
+
+    // formatVaild 檢測所有輸入格式是否正確
+    function formatVaild() {
+      if (1 > showName.value.length || showName.value.length > 15) {
+        registerEnable.value = false;
+        return false;
+      }
+      if (4 > loginName.value.length || loginName.value.length > 30) {
+        registerEnable.value = false;
+        return false;
+      }
+
+      if (email.value.length > 256 || email.value.search(emailRule) == -1) {
+        registerEnable.value = false;
+        return false;
+      }
+      if (!passwordEqual() || password.value.length < 6) {
+        registerEnable.value = false;
+        return false;
+      }
+      registerEnable.value = true;
+      return true;
+    }
+
+    async function sendRegisterData() {
+      if (formatVaild()) {
+        var path = '/api/register';
+        await api
           .post(path, {
-            show_name: this.showName,
-            login_name: this.loginName,
-            email: this.email,
-            password: this.password
+            show_name: showName.value,
+            login_name: loginName.value,
+            email: email.value,
+            password: password.value,
           })
-          .then(res => {
-            var data = res.data;
-            this.id = data["id"];
-            this.errList = data["err_list"];
-            if (this.errList) {
-              this.registerErrMsgArray = [];
-              this.errList.forEach(errCode => {
+          .then((res) => {
+            interface resDataJson {
+              id: number;
+              err_list: [];
+            }
+            var data = res.data as resDataJson;
+            id.value = data['id'];
+            errList.value = data['err_list'];
+            if (errList.value) {
+              registerErrMsgArray.value = [] as string[];
+              errList.value.forEach((errCode) => {
                 switch (errCode) {
                   case 1:
-                    this.registerErrMsgArray.push("登入帳號已被使用過");
+                    registerErrMsgArray.value.push('登入帳號已被使用過');
                     break;
                   case 2:
-                    this.registerErrMsgArray.push("帳號長度錯誤");
+                    registerErrMsgArray.value.push('帳號長度錯誤');
                     break;
                   case 3:
-                    this.registerErrMsgArray.push("顯示名稱長度錯誤");
+                    registerErrMsgArray.value.push('顯示名稱長度錯誤');
 
                     break;
                   case 4:
-                    this.registerErrMsgArray.push("密碼長度錯誤");
+                    registerErrMsgArray.value.push('密碼長度錯誤');
                     break;
                   case 5:
-                    this.registerErrMsgArray.push(
-                      "不支援大於256字元的電子郵件"
+                    registerErrMsgArray.value.push(
+                      '不支援大於256字元的電子郵件'
                     );
 
                     break;
                   case 6:
-                    this.registerErrMsgArray.push("電子郵件格式錯誤");
+                    registerErrMsgArray.value.push('電子郵件格式錯誤');
                     break;
                   case 7:
-                    this.registerErrMsgArray.push("電子郵件已被使用過");
+                    registerErrMsgArray.value.push('電子郵件已被使用過');
                     break;
                   case 8:
-                    this.registerErrMsgArray.push("系統錯誤");
+                    registerErrMsgArray.value.push('系統錯誤');
                     break;
                   default:
                     break;
                 }
               });
-              this.registerError = true;
+              registerError.value = true;
             } else {
-              if (this.requireEmailAct) {
-                this.registerSuccessMsg =
-                  "認證信件已經寄到 " +
-                  this.email +
-                  " 請透過信中的連結完成註冊";
+              if (requireEmailAct.value) {
+                registerSuccessMsg.value =
+                  '認證信件已經寄到 ' +
+                  email.value +
+                  ' 請透過信中的連結完成註冊';
               }
-              this.registerSuccess = true;
+              registerSuccess.value = true;
             }
           })
-          .catch(error => {
+          .catch((error) => {
             if (error) {
             }
           });
       } else {
       }
     }
-  }
-};
+
+    return {
+      requireEmailAct,
+      showName,
+      loginName,
+      email,
+      emailRule,
+      password,
+      rePassword,
+      passwordInputRef,
+      rePasswordInputRef,
+      registerEnable,
+      registerError,
+      registerErrMsgArray,
+      registerSuccess,
+      registerSuccessMsg,
+      id,
+      errList,
+      push,
+      passwordVaild,
+      formatVaild,
+      sendRegisterData,
+    };
+  },
+  methods: {},
+});
 </script>

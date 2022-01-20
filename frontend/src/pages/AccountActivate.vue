@@ -23,68 +23,86 @@
     </q-dialog>
   </q-page>
 </template>
-<script>
-export default {
-  name: "AccountActivatePage",
-  data() {
-    return {
-      showMsg: false,
-      actSuccess: false,
-      msgTitle: "",
-      msgContent: "",
-      userID: 0,
-      grade: 0,
-      showName: ""
-    };
-  },
-  created() {
-    this.activateAccount();
-  },
-  methods: {
-    async activateAccount() {
-      var path = "/api/account-activate/" + this.$route.params.token;
-      await this.$axios
+<script lang="ts">
+import { ref, defineComponent } from 'vue';
+import { useRoute } from 'vue-router';
+import axios from 'axios';
+import { api } from 'boot/axios';
+import { Push } from 'src/lib/router/pushPage';
+export default defineComponent({
+  name: 'AccountActivatePage',
+  setup() {
+    const route = useRoute();
+    const push = new Push();
+
+    const showMsg = ref(false);
+    const actSuccess = ref(false);
+    const msgTitle = ref('');
+    const msgContent = ref('');
+    const userID = ref(0);
+    const grade = ref(0);
+    const showName = ref('');
+
+    interface userDataJson {
+      user_id: number;
+      grade: number;
+      show_name: string;
+    }
+
+    async function activateAccount() {
+      let token = route.params.token as string;
+      let path = '/account-activate/' + token;
+      await api
         .get(path)
-        .then(res => {
-          var data = res.data;
-          this.userID = data["user_id"];
-          this.grade = data["grade"];
-          this.showName = data["show_name"];
-          this.actSuccess = true;
-          this.msgTitle = "認證成功";
-          this.msgContent = "歡迎您的加入 " + this.showName;
-          this.showMsg = true;
+        .then((res) => {
+          let data = res.data as userDataJson;
+          userID.value = data['user_id'];
+          grade.value = data['grade'];
+          showName.value = data['show_name'];
+          actSuccess.value = true;
+          msgTitle.value = '認證成功';
+          msgContent.value = '歡迎您的加入 ' + showName.value;
+          showMsg.value = true;
         })
-        .catch(error => {
-          if (error.request) {
-            switch (error.request.status) {
-              //Internal Server Error
-              case 500:
-                this.msgTitle = "認證失敗";
-                this.msgContent = "伺服器內部錯誤";
-                this.showMsg = true;
-                break;
-              //Forbidden
-              case 403:
-                this.msgTitle = "認證失敗";
-                this.msgContent = "錯誤或已失效的連結";
-                this.showMsg = true;
-                break;
+        .catch((error) => {
+          msgTitle.value = '認證失敗';
+          if (axios.isAxiosError(error)) {
+            if (error.response) {
+              switch (error.response.status) {
+                case 500:
+                  msgContent.value = '伺服器內部錯誤';
+                  showMsg.value = true;
+                  break;
+                case 403:
+                  msgContent.value = '連結錯誤或已失效';
+                  showMsg.value = true;
+                  break;
+              }
             }
-          } else if (error.response) {
-            this.msgTitle = "認證失敗";
-            this.msgContent = error.response.data;
-            this.showMsg = true;
           }
         });
-    },
-    confirmBtnClick() {
-      if (this.actSuccess) {
-        this.$router.push("/user/" + this.userID.toString() + "/images");
+    }
+    void activateAccount();
+
+    function confirmBtnClick() {
+      if (actSuccess.value) {
+        push.userImagesPage(userID.value);
       } else {
-        this.$router.push("/");
+        push.homePage();
       }
     }
-  }
-};
+
+    return {
+      showMsg,
+      actSuccess,
+      msgTitle,
+      msgContent,
+      userID,
+      grade,
+      showName,
+      confirmBtnClick,
+    };
+  },
+  methods: {},
+});
 </script>

@@ -1,14 +1,13 @@
 <template>
-  <div>
-    尚未實作
-  </div>
+  <div>尚未實作</div>
 </template>
 
 <script>
-export default {
-  name: "PageUserAbout",
-  data() {
+import { defineComponent } from 'vue';
+export default defineComponent({
+  name: 'PageUserAbout',
+  setup() {
     return {};
-  }
-};
+  },
+});
 </script>

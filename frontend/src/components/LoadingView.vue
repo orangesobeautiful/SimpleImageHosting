@@ -4,14 +4,10 @@
   </q-inner-loading>
 </template>
 
-<script>
-export default {
-  name: "LoadingView",
-  props: ["inputVisible"],
-  data() {
-    return {};
-  },
-  created() {},
-  methods: {}
-};
+<script lang="ts">
+import { defineComponent } from 'vue';
+export default defineComponent({
+  name: 'LoadingView',
+  props: ['inputVisible'],
+});
 </script>

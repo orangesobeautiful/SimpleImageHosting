@@ -1,6 +1,6 @@
-# simpleimagehosting (simpleimagehosting)
+# simple image hosting (simpleimagehosting)
 
-SimpleImageHosting前端
+Simple Image Hosting 簡易的圖床伺服器
 
 ## Install the dependencies
 ```bash
@@ -23,4 +23,4 @@ quasar build
 ```
 
 ### Customize the configuration
-See [Configuring quasar.conf.js](https://v1.quasar.dev/quasar-cli/quasar-conf-js).
+See [Configuring quasar.conf.js](https://v2.quasar.dev/quasar-cli/quasar-conf-js).

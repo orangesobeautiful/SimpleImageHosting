@@ -6,7 +6,7 @@
         ref="target_element"
         href="/upload"
         target="_blank"
-        style="color: black;"
+        style="color: black"
         class="user-image-card add-link q-mr-sm q-mt-sm"
       >
         <img
@@ -30,7 +30,7 @@
 </template>
 
 <style lang="scss" scoped>
-@import "../../css/width.scss";
+@import '../../css/width.scss';
 
 .user-image-card {
   //顯示 2 張圖片
@@ -69,57 +69,51 @@
 }
 </style>
 
-<script>
-import UserImageCard from "../../components/User/ImageCard.vue";
+<script lang="ts">
+import { ref, defineComponent } from 'vue';
+import { useRoute } from 'vue-router';
+import { api } from 'boot/axios';
+import UserImageCard from 'src/components/User/ImageCard.vue';
 
-export default {
-  name: "PageUserImages",
+export default defineComponent({
+  name: 'PageUserImages',
   components: {
-    "user-image-card": UserImageCard
+    'user-image-card': UserImageCard,
   },
-  props: [],
-  data() {
+  setup() {
+    interface imageJson {
+      key: number;
+      hash_id: string;
+      title: string;
+      description: string;
+      original_url: string;
+      md_url?: string;
+    }
+    const route = useRoute();
+    const userID = ref(parseInt(route.params.id as string));
+    const imageList = ref([] as imageJson[]);
+
+    async function getUserImages() {
+      let path = '/user/' + userID.value.toString() + '/images';
+      await api.get(path).then((res) => {
+        let data = res.data as imageJson[];
+        if (data) {
+          imageList.value = data;
+          for (let i = 0; i < imageList.value.length; i++) {
+            if (!imageList.value[i].md_url) {
+              imageList.value[i].md_url = imageList.value[i].original_url;
+            }
+            imageList.value[i].key = i;
+          }
+        }
+      });
+    }
+    void getUserImages();
+
     return {
-      imageHeight: 0,
-      userID: this.$route.params.id,
-      imageList: []
+      userID,
+      imageList,
     };
   },
-  created() {
-    this.getUserImages();
-  },
-  methods: {
-    async getUserImages() {
-      var path = "/api/user/" + this.userID + "/images";
-      await this.$axios
-        .get(path)
-        .then(res => {
-          var data = res.data;
-          this.imageList = data;
-          for (var i = 0; i < this.imageList.length; i++) {
-            if (this.imageList[i].md_url == null) {
-              this.imageList[i].md_url = this.imageList[i].original_url;
-            }
-            this.imageList[i].key = i;
-          }
-        })
-        .catch(error => {
-          if (error.request) {
-          } else if (error.response) {
-            switch (error.response.status) {
-              //Internal Server Error
-              case 500:
-                break;
-              //Unauthorized
-              case 401:
-                break;
-              //Not Found
-              case 404:
-                break;
-            }
-          }
-        });
-    }
-  }
-};
+});
 </script>

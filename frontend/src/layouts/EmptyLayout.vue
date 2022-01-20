@@ -6,8 +6,9 @@
   </q-layout>
 </template>
 
-<script>
-export default {
-  name: "EmptyLayout"
-};
+<script lang="ts">
+import { defineComponent } from 'vue';
+export default defineComponent({
+  name: 'EmptyLayout',
+});
 </script>

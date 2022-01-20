@@ -98,110 +98,129 @@
 
 <style lang="scss" scoped></style>
 
-<script>
-export default {
-  name: "DashboardSettings",
-  data() {
-    return {
-      showMsg: false,
-      msgTitle: "",
-      msgContent: "",
-      hideSenderPwd: true,
-      //current value
-      hostname: "",
-      requireEmailAct: false,
-      senderEmailServer: "",
-      senderEmailAddress: "",
-      senderEmailUser: "",
-      // edit value
-      editHostname: "",
-      editRequireEmailAct: false,
-      editSenderEmailServer: "",
-      editSenderEmailAddress: "",
-      editSenderEmailUser: "",
-      editSenderEmailPassword: ""
-    };
-  },
-  async created() {
-    await this.getSettings();
-  },
-  methods: {
-    async getSettings() {
-      var path = "/api/dashboard/settings";
-      await this.$axios
-        .get(path)
-        .then(res => {
-          var data = res.data;
-          this.hostname = data["hostname"];
-          this.requireEmailAct = data["require_email_activate"];
-          this.senderEmailServer = data["sender_email_server"];
-          this.senderEmailAddress = data["sender_email_address"];
-          this.senderEmailUser = data["sender_email_user"];
+<script lang="ts">
+import { ref, defineComponent } from 'vue';
+import axios from 'axios';
+import { api } from 'src/boot/axios';
+import { json } from 'src/lib/common/type';
 
-          this.editHostname = this.hostname;
-          this.editRequireEmailAct = this.requireEmailAct;
-          this.editSenderEmailServer = this.senderEmailServer;
-          this.editSenderEmailAddress = this.senderEmailAddress;
-          this.editSenderEmailUser = this.senderEmailUser;
+export default defineComponent({
+  name: 'DashboardSettings',
+  setup() {
+    const showMsg = ref(false);
+    const msgTitle = ref('');
+    const msgContent = ref('');
+    const hideSenderPwd = ref(true);
+    //current value
+    const hostname = ref('');
+    const requireEmailAct = ref(false);
+    const senderEmailServer = ref('');
+    const senderEmailAddress = ref('');
+    const senderEmailUser = ref('');
+    // edit value
+    const editHostname = ref('');
+    const editRequireEmailAct = ref(false);
+    const editSenderEmailServer = ref('');
+    const editSenderEmailAddress = ref('');
+    const editSenderEmailUser = ref('');
+    const editSenderEmailPassword = ref('');
 
-          if (this.senderEmailServer != "") {
-          }
+    // setting 的 json 格式
+    interface settingJson {
+      hostname: string;
+      require_email_activate: boolean;
+      sender_email_server: string;
+      sender_email_address: string;
+      sender_email_user: string;
+      sender_email_password: string;
+    }
+
+    // getSettings 取得當前伺服器設定
+    async function getSettings() {
+      let path = 'dashboard/settings';
+      await api.get(path).then((res) => {
+        const data = res.data as settingJson;
+        hostname.value = data['hostname'];
+        requireEmailAct.value = data['require_email_activate'];
+        senderEmailServer.value = data['sender_email_server'];
+        senderEmailAddress.value = data['sender_email_address'];
+        senderEmailUser.value = data['sender_email_user'];
+
+        editHostname.value = hostname.value;
+        editRequireEmailAct.value = requireEmailAct.value;
+        editSenderEmailServer.value = senderEmailServer.value;
+        editSenderEmailAddress.value = senderEmailAddress.value;
+        editSenderEmailUser.value = senderEmailUser.value;
+
+        if (senderEmailServer.value != '') {
+        }
+      });
+    }
+    void getSettings();
+
+    async function editSettings() {
+      let path = '/dashboard/settings';
+
+      //要傳送的資料
+      let patchData: json = {};
+      patchData['hostname'] = editHostname.value;
+      patchData['require_email_activate'] = editRequireEmailAct.value;
+      if (
+        senderEmailServer.value != editSenderEmailServer.value ||
+        senderEmailAddress.value != editSenderEmailAddress.value ||
+        senderEmailUser.value != editSenderEmailUser.value ||
+        editSenderEmailPassword.value != editSenderEmailPassword.value
+      ) {
+        patchData['sender_email_server'] = editSenderEmailServer.value;
+        patchData['sender_email_address'] = editSenderEmailAddress.value;
+        patchData['sender_email_user'] = editSenderEmailUser.value;
+        patchData['sender_email_password'] = editSenderEmailPassword.value;
+      }
+
+      await api
+        .patch(path, patchData)
+        .then((res) => {
+          let data = res.data as json;
+          msgTitle.value = '修改成功';
+          msgContent.value = JSON.stringify(data, null, '\t');
+          showMsg.value = true;
         })
-        .catch(error => {
-          if (error.request) {
-          } else if (error.response) {
-            switch (error.response.status) {
-              //Internal Server Error
-              case 500:
-                break;
-              //Unauthorized
-              case 401:
-                this.hasLogin = false;
-                break;
+        .catch((error) => {
+          if (axios.isAxiosError(error)) {
+            if (error.response) {
+              msgTitle.value = error.response.status.toString();
+              showMsg.value = true;
+              msgContent.value = JSON.stringify(
+                JSON.parse(error.response.data),
+                null,
+                '\t'
+              );
             }
           }
         });
-    },
-    async editSettings() {
-      var path = "/api/dashboard/settings";
-
-      //要傳送的資料
-      var patchData = {};
-      patchData["hostname"] = this.editHostname;
-      patchData["require_email_activate"] = this.editRequireEmailAct;
-      if (
-        this.senderEmailServer != this.editSenderEmailServer ||
-        this.senderEmailAddress != this.editSenderEmailAddress ||
-        this.senderEmailUser != this.editSenderEmailUser ||
-        this.editSenderEmailPassword != this.editSenderEmailPassword
-      ) {
-        patchData["sender_email_server"] = this.editSenderEmailServer;
-        patchData["sender_email_address"] = this.editSenderEmailAddress;
-        patchData["sender_email_user"] = this.editSenderEmailUser;
-        patchData["sender_email_password"] = this.editSenderEmailPassword;
-      }
-
-      await this.$axios
-        .patch(path, patchData)
-        .then(res => {
-          var data = res.data;
-          this.msgTitle = "修改成功";
-          this.msgContent = JSON.stringify(data, null, "\t");
-          this.showMsg = true;
-        })
-        .catch(error => {
-          if (error.request) {
-            this.msgTitle = error.request.status;
-            this.msgContent = JSON.stringify(
-              JSON.parse(error.request.response),
-              null,
-              "\t"
-            );
-            this.showMsg = true;
-          } else if (error.response) {
-          }
-        });
     }
-  }
-};
+
+    return {
+      showMsg,
+      msgTitle,
+      msgContent,
+      hideSenderPwd,
+      //current value
+      hostname,
+      requireEmailAct,
+      senderEmailServer,
+      senderEmailAddress,
+      senderEmailUser,
+      // edit value
+      editHostname,
+      editRequireEmailAct,
+      editSenderEmailServer,
+      editSenderEmailAddress,
+      editSenderEmailUser,
+      editSenderEmailPassword,
+      editSettings,
+    };
+  },
+  methods: {},
+});
 </script>

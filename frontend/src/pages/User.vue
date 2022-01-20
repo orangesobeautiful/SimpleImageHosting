@@ -23,15 +23,13 @@
     <!-- error page -->
     <div v-if="showNotFound" class="column not-found-colunm items-center">
       <div class="not-found-msg">
-        <div class="text-center text-h5">
-          您尋找的用戶不存在或是已刪除
-        </div>
+        <div class="text-center text-h5">您尋找的用戶不存在或是已刪除</div>
         <q-space style="height: 20px" />
         <div class="row justify-around not-found-redirect-link">
-          <div class="text-h6 text-center" @click="goHomePage">
+          <div class="text-h6 text-center" @click="push.homePage()">
             返回首頁
           </div>
-          <div class="text-h6 text-center" @click="goPreviousPage">
+          <div class="text-h6 text-center" @click="push.previousPage()">
             上一頁
           </div>
         </div>
@@ -40,109 +38,133 @@
   </q-page>
 </template>
 
-<style lang="sass" scoped>
-.user-card-row
-  width: 100%
-.tab-row
-  width: 100%
-  height: 50px
-.not-found-colunm
-  width: 100%
-.not-found-msg
-  margin-top: 24px
-  margin-buttom: 24px
-  width: 350px
-.not-found-redirect-link
-  color: #337f15
+<style lang="scss" scoped>
+.user-card-row {
+  width: 100%;
+}
+
+.tab-row {
+  width: 100%;
+  height: 50px;
+}
+
+.not-found-colunm {
+  width: 100%;
+}
+
+.not-found-msg {
+  margin-top: 24px;
+  margin-bottom: 24px;
+  width: 350px;
+}
+
+.not-found-redirect-link {
+  color: #337f15;
+}
 </style>
 
-<script>
-import LoadingView from "../components/LoadingView.vue";
+<script lang="ts">
+import { ref, defineComponent } from 'vue';
+import { useRoute } from 'vue-router';
+import axios from 'axios';
+import { api } from 'boot/axios';
+import { Push } from 'src/lib/router/pushPage';
+import LoadingView from '../components/LoadingView.vue';
 
-export default {
-  name: "PageUser",
-  data() {
-    return {
-      userID: this.$route.params.id,
-      userShowName: "",
-      userAvatar: "",
-      userIntroduction: "",
-      tabRef: "images",
-      showLoading: true,
-      userDataLoaded: false,
-      showNotFound: false
-    };
-  },
+export default defineComponent({
+  name: 'PageUser',
   components: {
-    "loading-view": LoadingView
+    'loading-view': LoadingView,
   },
-  created() {
-    this.initStatus();
-    this.getUserInfo();
+  setup() {
+    const route = useRoute();
+    const push = new Push();
+
+    const userID = ref(route.params.id);
+    const userShowName = ref('');
+    const userAvatar = ref('');
+    const userIntroduction = ref('');
+    const tabRef = ref('images');
+    const showLoading = ref(true);
+    const userDataLoaded = ref(false);
+    const showNotFound = ref(false);
+
+    function initStatus() {
+      userDataLoaded.value = false;
+      showLoading.value = true;
+      showNotFound.value = false;
+    }
+    function notFoundPage() {
+      showLoading.value = false;
+      showNotFound.value = true;
+    }
+    function normalPage() {
+      showLoading.value = false;
+      userDataLoaded.value = true;
+    }
+    initStatus();
+
+    interface userDataJSON {
+      show_name: string;
+      avatar: string;
+      introduction: string;
+    }
+    async function getUserInfo(id?: number) {
+      if (id) {
+        var path = '/user/' + id.toString();
+      } else {
+        var path = '/user/' + userID.value.toString();
+      }
+      await api
+        .get(path)
+        .then((res) => {
+          var data = res.data as userDataJSON;
+          userShowName.value = data['show_name'];
+          userAvatar.value = data['avatar'];
+          userIntroduction.value = data['introduction'];
+          // 載入正常頁面
+          normalPage();
+        })
+        .catch((error) => {
+          if (axios.isAxiosError(error)) {
+            if (error.response) {
+              switch (error.response.status) {
+                // 400 -> ID 不是數字
+                // 404 -> 找不到用戶
+                case 400:
+                case 404:
+                  notFoundPage();
+                  break;
+              }
+            }
+          }
+        });
+    }
+    void getUserInfo();
+
+    return {
+      userID,
+      userShowName,
+      userAvatar,
+      userIntroduction,
+      tabRef,
+      showLoading,
+      initStatus,
+      notFoundPage,
+      normalPage,
+      getUserInfo,
+      userDataLoaded,
+      showNotFound,
+      push,
+    };
   },
   beforeRouteUpdate(to, _, next) {
     // 重置資料載入狀態，以顯示 loading 效果
     this.initStatus();
-    this.getUserInfo(to.params.id);
+    const idStr = to.params.id as string;
+    void this.getUserInfo(Number.parseInt(idStr));
     next();
   },
-  methods: {
-    initStatus() {
-      this.userDataLoaded = false;
-      this.showLoading = true;
-      this.showNotFound = false;
-    },
-    notFoundPage() {
-      this.showLoading = false;
-      this.showNotFound = true;
-    },
-    normalPage() {
-      this.showLoading = false;
-      this.userDataLoaded = true;
-    },
-    async getUserInfo(id = null) {
-      if (id == null) {
-        var path = "/api/user/" + this.userID;
-      } else {
-        var path = "/api/user/" + id;
-      }
-
-      await this.$axios
-        .get(path)
-        .then(res => {
-          var data = res.data;
-          this.userShowName = data["show_name"];
-          this.userAvatar = data["avatar"];
-          this.userIntroduction = data["introduction"];
-
-          this.normalPage();
-        })
-        .catch(error => {
-          if (error.request) {
-            switch (error.request.status) {
-              //Internal Server Error
-              case 500:
-                break;
-              //Unauthorized
-              case 401:
-                break;
-              //Bad Request
-              //Not Found
-              case 400:
-              case 404:
-                this.notFoundPage();
-                break;
-            }
-          } else if (error.response) {
-          }
-        });
-    },
-    goHomePage() {
-      this.$router.push("/");
-    },
-    goPreviousPage() {
-      this.$router.go(-1);
-    }
-  }
-};
+  methods: {},
+});
 </script>
