@@ -14,7 +14,7 @@ var logger *zap.Logger
 var cfg config.CfgInfo
 
 // New return controller
-func Init(logger *zap.Logger) {
-	logger = logger
+func Init(inlogger *zap.Logger) {
+	logger = inlogger
 	cfg = config.GetCfg()
 }

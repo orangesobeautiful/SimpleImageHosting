@@ -59,7 +59,7 @@ func CreateImage(title, description, imageType string, width, height int,
 	}
 
 	var fileName = hashIDStr + "." + imageType
-	res = db.Model(&newImage).Updates(map[string]interface{}{"HashID": hashID, "FileName": fileName})
+	res = db.Model(&newImage).Updates(map[string]interface{}{"HashID": hashIDStr, "FileName": fileName})
 	return newImage.ID, hashIDStr, res.Error
 }
 

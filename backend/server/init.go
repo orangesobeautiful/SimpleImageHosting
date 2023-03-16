@@ -146,6 +146,7 @@ func initServer(cfg *config.CfgInfo, logger *zap.Logger) (engine *gin.Engine, er
 		return
 	}
 
+	controller.Init(logger)
 	r := gin.New()
 	if cfg.DebugMode {
 		gin.SetMode(gin.DebugMode)

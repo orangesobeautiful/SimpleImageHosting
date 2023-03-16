@@ -90,7 +90,9 @@ func Register(c *gin.Context) {
 
 		err := common.GomailSender(
 			senderEmailAdrFormat, inputJSON.Email, emailTitle, bodyText,
-			models.SvrSettingGet(svrsn.SenderEmailServer), models.SvrSettingGet(svrsn.SenderEmailUser), models.SvrSettingGet(svrsn.SenderEmailPassword))
+			models.SvrSettingGet(svrsn.SenderEmailServer),
+			models.SvrSettingGet(svrsn.SenderEmailUser),
+			models.SvrSettingGet(svrsn.SenderEmailPassword))
 		if err != nil {
 			errList = append(errList, 8)
 			fmt.Println(err.Error())

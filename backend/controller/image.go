@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"path/filepath"
 	"strconv"
 
 	// user for image.DecodeConfig
@@ -94,13 +95,13 @@ func imgFHeaderDeal(userIDInt int64, fileHeader *multipart.FileHeader) [2]string
 		var orgImgFileSize, mdImgFileSize int64
 		var imgHashID string
 		imgID, imgHashID, err = models.CreateImage("", "", fileType, imgConf.Width, imgConf.Height, userIDInt)
-		savePath = path.Join(cfg.ImageMDSaveDir(), imgHashID+"."+fileType)
-		mdSavePath = path.Join(cfg.ImageMDSaveDir(), config.ImageMDDirectory, imgHashID+".md."+fileType)
+		savePath = filepath.Join(cfg.ImageSaveDir(), imgHashID+"."+fileType)
+		mdSavePath = filepath.Join(cfg.ImageMDSaveDir(), imgHashID+".md."+fileType)
 		if err != nil {
 			return [2]string{fileHeader.Filename, "server error"}
 		}
 
-		//在生成資料庫紀錄、圖片檔案後發生錯誤時，刪除這些已經寫入的東西
+		// 在生成資料庫紀錄、圖片檔案後發生錯誤時，刪除這些已經寫入的東西
 		defer func() {
 			if needRecycle {
 				if gnrDBRecord {
@@ -116,7 +117,6 @@ func imgFHeaderDeal(userIDInt int64, fileHeader *multipart.FileHeader) [2]string
 				}
 			}
 		}()
-
 		gnrDBRecord = true
 		// 產生縮圖
 		if imgConf.Width > mdWidth {
