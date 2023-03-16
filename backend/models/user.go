@@ -1,4 +1,4 @@
-package databaseoperation
+package models
 
 import (
 	"crypto/rand"
@@ -7,11 +7,45 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"SimpleImageHosting/common"
+	"sih/common"
 
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
+
+// User datebase user struct
+type User struct {
+	ID            int64  `gorm:"column: ID; type: BIGINT UNSIGNED NOT NULL auto_increment; primary_key;" json:"id"`
+	LoginName     string `gorm:"column: LoginName; type:VARCHAR(30) NOT NULL; uniqueIndex:idx_loginname;" json:"login_name"`
+	ShowName      string `gorm:"column: ShowName; type:VARCHAR(30) NOT NULL;" json:"show_name"`
+	Email         string `gorm:"column: Email; type:VARCHAR(256) NOT NULL; uniqueIndex:idx_email;" json:"email"`
+	PwdHash       []byte `gorm:"column: PwdHash; type:BINARY(60) NOT NULL;" json:"pwd_hash"`
+	Avatar        string `gorm:"column: Avatar; type:VARCHAR(30) NOT NULL; default:\"\"" json:"avatar"`
+	Introduction  string `gorm:"column: Introduction; type:VARCHAR(100)  NOT NULL; default:\"\"" json:"introduction"`
+	Grade         int    `gorm:"column: Grade; type: TINYINT UNSIGNED NOT NULL;" json:"grade"`
+	MailVaild     bool   `gorm:"column: MailVaild; type:BOOLEAN NOT NULL; default:false" json:"mail_vaild"`
+	LastLoginTime int64  `gorm:"column: LastLoginTime; type:BIGINT UNSIGNED NOT NULL ;" json:"last_login_time"`
+	CreatedAt     int64  `gorm:"column: CreatedAt; type:BIGINT UNSIGNED NOT NULL ;" json:"create_at"`
+}
+
+// TableName 指定 User 表格的名稱
+func (User) TableName() string {
+	return "users"
+}
+
+// NotActivatedUser 未進行郵件認證的使用者
+// 真正紀錄 Email 的欄位是 NotActEmail
+type NotActivatedUser struct {
+	User
+	NotActEmail    string `gorm:"column: NotActEmail; type:VARCHAR(256) NOT NULL; index:idx_email;" json:"not_act_email"`
+	ActaivateToken string `gorm:"column: EmailActaivateToken; type: VARCHAR(256)  NOT NULL ; uniqueIndex:idx_emat;" json:"email_actaivate_token"`
+	EmailExpiration int64 `gorm:"column: EmailExpiration; type:BIGINT UNSIGNED NOT NULL " json:"email_expiration"`
+}
+
+// TableName 指定 NotActivatedUser 表格的名稱
+func (NotActivatedUser) TableName() string {
+	return "not_activated_user"
+}
 
 // CreateUser 新增使用者
 func CreateUser(loginName string, showName string, email string, password string, grade int, requireEmailActivate bool) (int64, string, []int) {
@@ -80,6 +114,7 @@ func CreateUser(loginName string, showName string, email string, password string
 			newNotActUser.Email = loginName
 			newNotActUser.NotActEmail = email
 
+			const emailActTokenRandLen = 32
 			randBytes := make([]byte, emailActTokenRandLen)
 			if _, err := rand.Read(randBytes); err != nil {
 				errList = append(errList, 8)
@@ -92,7 +127,6 @@ func CreateUser(loginName string, showName string, email string, password string
 			res = db.Create(&newUser)
 		}
 		if res.Error == nil {
-			//newUser, _ = GetUserByLoginName(loginName)
 			newUserID = newUser.ID
 		} else {
 			errList = append(errList, 8)

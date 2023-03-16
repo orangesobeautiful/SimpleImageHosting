@@ -1,7 +1,7 @@
 package main
 
 import (
-	"SimpleImageHosting/server"
+	"sih/server"
 )
 
 func main() {

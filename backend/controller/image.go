@@ -1,26 +1,30 @@
-package server
+package controller
 
 import (
-	"SimpleImageHosting/databaseoperation"
 	"fmt"
 	"image"
-	"mime/multipart"
-
-	// user for image.DecodeConfig
-	_ "image/gif"
-	_ "image/jpeg"
-	_ "image/png"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"os"
 	"path"
 	"strconv"
 
-	"github.com/gin-contrib/sessions"
-	"github.com/gin-gonic/gin"
+	// user for image.DecodeConfig
+	_ "image/gif"
+	_ "image/jpeg"
+	_ "image/png"
+
+	"sih/config"
+	"sih/models"
 
 	"github.com/disintegration/imaging"
+	"github.com/gin-contrib/sessions"
+	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
+
+const mdWidth = 700
 
 // fileHeaderDeal 處理上傳的 fileHeader
 // 發生錯誤時回傳 [2]string{"Filename", "錯誤訊息"}
@@ -89,9 +93,9 @@ func imgFHeaderDeal(userIDInt int64, fileHeader *multipart.FileHeader) [2]string
 		var fi os.FileInfo
 		var orgImgFileSize, mdImgFileSize int64
 		var imgHashID string
-		imgID, imgHashID, err = databaseoperation.CreateImage("", "", fileType, imgConf.Width, imgConf.Height, userIDInt)
-		savePath = path.Join(imageSaveDir, imgHashID+"."+fileType)
-		mdSavePath = path.Join(imageSaveDir, imageMDDirectory, imgHashID+".md."+fileType)
+		imgID, imgHashID, err = models.CreateImage("", "", fileType, imgConf.Width, imgConf.Height, userIDInt)
+		savePath = path.Join(cfg.ImageMDSaveDir(), imgHashID+"."+fileType)
+		mdSavePath = path.Join(cfg.ImageMDSaveDir(), config.ImageMDDirectory, imgHashID+".md."+fileType)
 		if err != nil {
 			return [2]string{fileHeader.Filename, "server error"}
 		}
@@ -100,7 +104,9 @@ func imgFHeaderDeal(userIDInt int64, fileHeader *multipart.FileHeader) [2]string
 		defer func() {
 			if needRecycle {
 				if gnrDBRecord {
-					databaseoperation.DeleteImage(imgID)
+					// TODO: 引用 create 後的 image
+					delImg := &models.Image{ID: imgID}
+					delImg.Delete()
 				}
 				if gnrMDImageFile {
 					os.Remove(savePath)
@@ -182,8 +188,10 @@ func imgFHeaderDeal(userIDInt int64, fileHeader *multipart.FileHeader) [2]string
 		}
 		orgImgFileSize = fi.Size()
 		// 更新檔案大小
-		res := databaseoperation.UpdateImage(imgID, map[string]interface{}{"Size": orgImgFileSize, "MediumSize": mdImgFileSize})
-		if res.Error != nil {
+		// TODO: 引用 create 後的 image
+		updateImg := &models.Image{ID: imgID}
+		err = updateImg.Update(map[string]interface{}{"Size": orgImgFileSize, "MediumSize": mdImgFileSize})
+		if err != nil {
 			needRecycle = true
 			return [2]string{fileHeader.Filename, "伺服器內部錯誤"}
 		}
@@ -193,7 +201,7 @@ func imgFHeaderDeal(userIDInt int64, fileHeader *multipart.FileHeader) [2]string
 	return [2]string{"", ""}
 }
 
-func uploadImage(c *gin.Context) {
+func UploadImage(c *gin.Context) {
 	session := sessions.Default(c)
 	form, err := c.MultipartForm()
 	//fileHeaders 的讀取需要放在錯誤偵測的 return 前面
@@ -235,15 +243,9 @@ func uploadImage(c *gin.Context) {
 	c.JSON(http.StatusOK, errList)
 }
 
-func editImage(c *gin.Context) {
+func EditImage(c *gin.Context) {
 	var err error
 	imgHashIDStr := c.Param("hashID")
-	arrayRes, _ := hashID.DecodeInt64WithError(imgHashIDStr)
-	if len(arrayRes) == 0 {
-		c.String(http.StatusBadRequest, "Bad request ID.")
-		return
-	}
-	imgID := arrayRes[0]
 
 	session := sessions.Default(c)
 	user := session.Get(userkey)
@@ -260,7 +262,14 @@ func editImage(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Bad request data"})
 	}
 
-	img, _ := databaseoperation.GetImageByID(imgID)
+	img, err := models.ImageFindByHashID(imgHashIDStr)
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			c.String(http.StatusNotFound, "image not found")
+		} else {
+			c.String(http.StatusInternalServerError, "internal server error")
+		}
+	}
 	if img.OwnerID != userIDInt {
 		c.JSON(http.StatusForbidden, gin.H{"error": "You don't have permission."})
 		return
@@ -279,8 +288,8 @@ func editImage(c *gin.Context) {
 		}
 	}
 
-	res := databaseoperation.UpdateImage(imgID, copyMap)
-	if res.Error != nil {
+	err = img.Update(copyMap)
+	if err != nil {
 		c.String(http.StatusInternalServerError, "Internal Server Error")
 		return
 	}
@@ -288,14 +297,8 @@ func editImage(c *gin.Context) {
 	c.String(http.StatusOK, "success update.")
 }
 
-func deleteImage(c *gin.Context) {
+func DeleteImage(c *gin.Context) {
 	imgHashIDStr := c.Param("hashID")
-	arrayRes, _ := hashID.DecodeInt64WithError(imgHashIDStr)
-	if len(arrayRes) == 0 {
-		c.String(http.StatusBadRequest, "Bad request ID.")
-		return
-	}
-	imgID := arrayRes[0]
 
 	session := sessions.Default(c)
 	user := session.Get(userkey)
@@ -306,20 +309,27 @@ func deleteImage(c *gin.Context) {
 	}
 	userIDInt, _ := user.(int64)
 
-	img, _ := databaseoperation.GetImageByID(imgID)
-	var filename string = img.FileName
+	img, err := models.ImageFindByHashID(imgHashIDStr)
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			c.String(http.StatusNotFound, "image not found")
+		} else {
+			c.String(http.StatusInternalServerError, "internal server error")
+		}
+	}
+	var filename = img.FileName
 	if img.OwnerID != userIDInt {
 		c.String(http.StatusForbidden, "forbidden.")
 		return
 	}
 
-	res := databaseoperation.DeleteImage(imgID)
-	if res.Error != nil {
+	err = img.Delete()
+	if err != nil {
 		c.String(http.StatusInternalServerError, "Internal Server Error")
 		return
 	}
 
-	err := os.Remove(path.Join(imageSaveDir, filename))
+	err = os.Remove(path.Join(cfg.ImageSaveDir(), filename))
 	if err != nil {
 		fmt.Println(err)
 	}
@@ -327,27 +337,19 @@ func deleteImage(c *gin.Context) {
 	c.String(http.StatusOK, "success delete.")
 }
 
-func getImage(c *gin.Context) {
+func GetImage(c *gin.Context) {
 	imgHashIDStr := c.Param("hashID")
-	arrayRes, err := hashID.DecodeInt64WithError(imgHashIDStr)
+
+	img, err := models.ImageFindByHashID(imgHashIDStr)
 	if err != nil {
-		c.String(http.StatusNotFound, "Image not found.")
-		return
+		if err == gorm.ErrRecordNotFound {
+			c.String(http.StatusNotFound, "image not found")
+		} else {
+			c.String(http.StatusInternalServerError, "internal server error")
+		}
 	}
 
-	if len(arrayRes) <= 0 {
-		c.String(http.StatusBadRequest, "Bad request ID.")
-		return
-	}
-	imgID := arrayRes[0]
-
-	img, res := databaseoperation.GetImageByID(imgID)
-	if res.RowsAffected <= 0 {
-		c.String(http.StatusNotFound, "Image not found.")
-		return
-	}
-
-	user, res := databaseoperation.GetUserByID(img.OwnerID)
+	user, res := models.GetUserByID(img.OwnerID)
 	if res.Error != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal Server Error"})
 	} else if res.RowsAffected <= 0 {
@@ -358,6 +360,8 @@ func getImage(c *gin.Context) {
 	var avatarURL string
 	if user.Avatar == "" {
 		avatarURL = "/Avatars/default.png"
+	} else {
+		avatarURL = user.Avatar
 	}
 
 	var imgDataJSON = gin.H{
@@ -366,16 +370,16 @@ func getImage(c *gin.Context) {
 		"owner_name":   user.ShowName,
 		"owner_avatar": avatarURL,
 		"description":  img.Description,
-		"original_url": path.Join(imageDirectory, img.HashID+"."+img.Type),
+		"original_url": path.Join(config.ImageDirectory, img.HashID+"."+img.Type),
 		"create_at":    strconv.FormatInt(img.CreateAt, 10),
 	}
 	if img.MediumSize > 0 {
-		imgDataJSON["md_url"] = path.Join(imageDirectory, imageMDDirectory, img.HashID+".md."+img.Type)
+		imgDataJSON["md_url"] = path.Join(config.ImageDirectory, config.ImageMDDirectory, img.HashID+".md."+img.Type)
 	}
 	c.JSON(http.StatusOK, imgDataJSON)
 }
 
-func getUserImages(c *gin.Context) {
+func GetUserImages(c *gin.Context) {
 	userIDStr := c.Param("userID")
 	userID, err := strconv.ParseInt(userIDStr, 10, 64)
 	if err != nil {
@@ -383,27 +387,27 @@ func getUserImages(c *gin.Context) {
 		return
 	}
 
-	if !databaseoperation.IsUserExist(userID) {
+	if !models.IsUserExist(userID) {
 		c.String(http.StatusNotFound, "User does not exist.")
 		return
 	}
 
-	images, res := databaseoperation.GetImageListByOwnerID(userID)
-	if res.Error != nil {
+	imageList, err := models.ImageListByOwnerID(userID)
+	if err != nil {
 		c.String(http.StatusInternalServerError, "Internal server error.")
 		return
 	}
 
 	var resList []gin.H
-	for _, img := range images {
+	for _, img := range imageList {
 		var imgDataJSON = gin.H{
 			"hash_id":      img.HashID,
 			"title":        img.Title,
 			"description":  img.Description,
-			"original_url": path.Join(imageDirectory, img.HashID+"."+img.Type),
+			"original_url": path.Join(config.ImageDirectory, img.HashID+"."+img.Type),
 		}
 		if img.MediumSize > 0 {
-			imgDataJSON["md_url"] = path.Join(imageDirectory, imageMDDirectory, img.HashID+".md."+img.Type)
+			imgDataJSON["md_url"] = path.Join(config.ImageDirectory, config.ImageMDDirectory, img.HashID+".md."+img.Type)
 		}
 		resList = append(resList, imgDataJSON)
 	}

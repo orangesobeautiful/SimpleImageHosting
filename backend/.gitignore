@@ -17,10 +17,10 @@
 .history/
 
 # 個人開發環境
-SIHBackned
-SIHBackned-gccgo
+sih
+sih-gccgo
 FileSaveDir/
-setting.conf
+setting.yaml
 
 # Test binary, built with `go test -c`
 *.test

@@ -1,10 +1,11 @@
-package server
+package controller
 
 import (
-	"SimpleImageHosting/common"
-	"SimpleImageHosting/databaseoperation"
 	"fmt"
 	"net/http"
+	"sih/common"
+	"sih/models"
+	"sih/models/svrsn"
 	"strconv"
 
 	"github.com/gin-contrib/sessions"
@@ -12,15 +13,17 @@ import (
 	"gorm.io/gorm"
 )
 
-func getServerInfo(c *gin.Context) {
+func GetServerInfo(c *gin.Context) {
 	var requireEmailActivate bool
-	requireEmailActivate, _ = strconv.ParseBool(webSetting["RequireEmailActivate"])
+
+	requireEmailActivate, _ = strconv.ParseBool(
+		models.SvrSettingGet(svrsn.RequireEmailActivate))
 	c.JSON(http.StatusOK, gin.H{
 		"require_email_activate": requireEmailActivate,
 	})
 }
 
-func getWebsiteSettings(c *gin.Context) {
+func GetWebsiteSettings(c *gin.Context) {
 	var res *gorm.DB
 	var err error
 
@@ -33,7 +36,7 @@ func getWebsiteSettings(c *gin.Context) {
 	}
 	userID := idInterface.(int64)
 
-	user, res := databaseoperation.GetUserByID(userID)
+	user, res := models.GetUserByID(userID)
 	if res.Error != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal Server Error"})
 	} else if res.RowsAffected <= 0 {
@@ -52,17 +55,18 @@ func getWebsiteSettings(c *gin.Context) {
 
 	returnJSON := make(map[string]interface{})
 
-	returnJSON["require_email_activate"], _ = strconv.ParseBool(webSetting["RequireEmailActivate"])
-	returnJSON["sender_email_server"] = webSetting["SenderEmailServer"]
-	returnJSON["sender_email_address"] = webSetting["SenderEmailAddress"]
-	returnJSON["sender_email_user"] = webSetting["SenderEmailUser"]
-	returnJSON["hostname"] = webSetting["Hostname"]
+	returnJSON["require_email_activate"], _ = strconv.ParseBool(
+		models.SvrSettingGet(svrsn.RequireEmailActivate))
+	returnJSON["sender_email_server"] = models.SvrSettingGet(svrsn.SenderEmailServer)
+	returnJSON["sender_email_address"] = models.SvrSettingGet(svrsn.SenderEmailAddress)
+	returnJSON["sender_email_user"] = models.SvrSettingGet(svrsn.SenderEmailUser)
+	returnJSON["hostname"] = models.SvrSettingGet(svrsn.Hostname)
 
 	c.JSON(http.StatusOK, returnJSON)
 }
 
 // websiteSetting 修改網站設定
-func editWebsiteSettings(c *gin.Context) {
+func EditWebsiteSettings(c *gin.Context) {
 	session := sessions.Default(c)
 	idInterface := session.Get(userkey)
 	if idInterface == nil {
@@ -72,10 +76,10 @@ func editWebsiteSettings(c *gin.Context) {
 	}
 	id := idInterface.(int64)
 
-	var user databaseoperation.User
+	var user models.User
 	var res *gorm.DB
 	var err error
-	user, res = databaseoperation.GetUserByID(id)
+	user, res = models.GetUserByID(id)
 	if res.Error != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal Server Error"})
 	} else if res.RowsAffected <= 0 {
@@ -174,16 +178,12 @@ func editWebsiteSettings(c *gin.Context) {
 	}
 
 	// 寫入資料庫
-	if val, ok := copyMap["RequireEmailActivate"]; ok {
-		webSetting["RequireEmailActivate"] = val.(string)
-	}
 	for key, value := range copyMap {
-		res = databaseoperation.UpdateSetting(key, value.(string))
-		if res.Error != nil {
+		err = models.SvrSettingUpdate(svrsn.SvrSettingName(key), value.(string))
+		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal Server Error"})
 			return
 		}
-		webSetting[key] = value.(string)
 	}
 
 	c.JSON(http.StatusOK, gin.H{"msg": "Update success."})
