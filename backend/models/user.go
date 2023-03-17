@@ -3,9 +3,7 @@ package models
 import (
 	"crypto/rand"
 	"encoding/base64"
-	"net/mail"
 	"time"
-	"unicode/utf8"
 
 	"sih/common"
 
@@ -15,17 +13,18 @@ import (
 
 // User datebase user struct
 type User struct {
-	ID            int64  `gorm:"column: ID; type: BIGINT UNSIGNED NOT NULL auto_increment; primary_key;" json:"id"`
-	LoginName     string `gorm:"column: LoginName; type:VARCHAR(30) NOT NULL; uniqueIndex:idx_loginname;" json:"login_name"`
-	ShowName      string `gorm:"column: ShowName; type:VARCHAR(30) NOT NULL;" json:"show_name"`
-	Email         string `gorm:"column: Email; type:VARCHAR(256) NOT NULL; uniqueIndex:idx_email;" json:"email"`
-	PwdHash       []byte `gorm:"column: PwdHash; type:BINARY(60) NOT NULL;" json:"pwd_hash"`
-	Avatar        string `gorm:"column: Avatar; type:VARCHAR(30) NOT NULL; default:\"\"" json:"avatar"`
-	Introduction  string `gorm:"column: Introduction; type:VARCHAR(100)  NOT NULL; default:\"\"" json:"introduction"`
-	Grade         int    `gorm:"column: Grade; type: TINYINT UNSIGNED NOT NULL;" json:"grade"`
-	MailVaild     bool   `gorm:"column: MailVaild; type:BOOLEAN NOT NULL; default:false" json:"mail_vaild"`
-	LastLoginTime int64  `gorm:"column: LastLoginTime; type:BIGINT UNSIGNED NOT NULL ;" json:"last_login_time"`
-	CreatedAt     int64  `gorm:"column: CreatedAt; type:BIGINT UNSIGNED NOT NULL ;" json:"create_at"`
+	ID        uint64 `gorm:"auto_increment; primary_key"`
+	LoginName string `gorm:"type:VARCHAR(30); uniqueIndex"`
+	ShowName  string `gorm:"type:VARCHAR(30)"`
+	Email     string `gorm:"type:VARCHAR(255); uniqueIndex"`
+
+	PwdHash      []byte `gorm:"type:BINARY(128)" json:"-"`
+	Avatar       string `gorm:"type:VARCHAR(30)"`
+	Introduction string `gorm:"type:VARCHAR(500)"`
+	Grade        int
+	MailVaild    bool
+	CreatedAt    int64 `gorm:"index"`
+	UpdateAt     int64
 }
 
 // TableName 指定 User 表格的名稱
@@ -37,9 +36,9 @@ func (User) TableName() string {
 // 真正紀錄 Email 的欄位是 NotActEmail
 type NotActivatedUser struct {
 	User
-	NotActEmail    string `gorm:"column: NotActEmail; type:VARCHAR(256) NOT NULL; index:idx_email;" json:"not_act_email"`
-	ActaivateToken string `gorm:"column: EmailActaivateToken; type: VARCHAR(256)  NOT NULL ; uniqueIndex:idx_emat;" json:"email_actaivate_token"`
-	EmailExpiration int64 `gorm:"column: EmailExpiration; type:BIGINT UNSIGNED NOT NULL " json:"email_expiration"`
+	NotActEmail     string `gorm:"type:VARCHAR(255); index"`
+	ActaivateToken  string `gorm:"type:VARCHAR(344); uniqueIndex"`
+	EmailExpiration int64  `gorm:"type:BIGINT UNSIGNED"`
 }
 
 // TableName 指定 NotActivatedUser 表格的名稱
@@ -47,91 +46,56 @@ func (NotActivatedUser) TableName() string {
 	return "not_activated_user"
 }
 
-// CreateUser 新增使用者
-func CreateUser(loginName string, showName string, email string, password string, grade int, requireEmailActivate bool) (int64, string, []int) {
-	/*
-		error message
-		1: loginNameLen is used
-		2: length of loginNameLen is not meet requirements
-		3: length of showName is not meet requirements
-		4: length of password is not meet requirements
-		5: email is too long
-		6: email not vaild
-		7: email is used
-		8: internal server error
-	*/
-	var errList []int
-	var actToken string
+// UserCreate 新增使用者
+func UserCreate(loginName, showName, email, password string,
+	grade int, requireEmailActivate bool) (id uint64, actToken string, errList []int) {
+	var newUserID uint64
+	const unknowErrCode = 8
 
-	if IsLoginNameUsed(loginName) {
-		errList = append(errList, 1)
+	bHash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		errList = append(errList, unknowErrCode)
+		return newUserID, actToken, errList
 	}
+	var res *gorm.DB
+	var currentTime = time.Now().Unix()
+	var newUser = User{
+		LoginName: loginName,
+		ShowName:  showName,
+		Email:     email,
+		PwdHash:   bHash,
+		Grade:     grade,
+		CreatedAt: currentTime,
+		UpdateAt:  currentTime,
+	}
+	if requireEmailActivate {
+		var newNotActUser NotActivatedUser
+		newNotActUser.User = newUser
+		newNotActUser.EmailExpiration = common.MaxUnixTimeInt64
 
-	var loginNameLen = len(loginName)
-	if loginNameLen < 4 || loginNameLen > 30 {
-		errList = append(errList, 2)
-	}
+		// 在未被認證的使用者中 email 應該是要能重複的
+		// 然而 Email 欄位是唯一限定不能重複(宣告時的繼承問題引起)
+		// 因此在 NotActivatedUser 表格中使用同樣唯一限定的 loginName 暫時代替
+		// 使用額外欄位 NotActEmail 紀錄真正的 Email
+		newNotActUser.Email = loginName
+		newNotActUser.NotActEmail = email
 
-	var showNameLen = utf8.RuneCountInString(showName)
-	if showNameLen < 1 || showNameLen > 15 {
-		errList = append(errList, 3)
-	}
-
-	if len(password) < 6 {
-		errList = append(errList, 4)
-	}
-	if len(email) > 256 {
-		errList = append(errList, 5)
-	}
-
-	_, err := mail.ParseAddress(email)
-	if len(email) < 3 || err != nil {
-		errList = append(errList, 6)
-	} else if IsEmailUsed(email) {
-		errList = append(errList, 7)
-	}
-
-	var newUserID int64
-	if len(errList) == 0 {
-		bHash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
-		if err != nil {
-			errList = append(errList, 8)
-			return newUserID, actToken, errList
+		const emailActTokenRandLen = 32
+		randBytes := make([]byte, emailActTokenRandLen)
+		if _, err := rand.Read(randBytes); err != nil {
+			errList = append(errList, unknowErrCode)
 		}
+		actToken = base64.RawURLEncoding.EncodeToString(randBytes)
+		newNotActUser.ActaivateToken = actToken
 
-		var res *gorm.DB
-		var currentTime = time.Now().Unix()
-		var newUser = User{LoginName: loginName, ShowName: showName, Email: email, PwdHash: bHash, Grade: grade, LastLoginTime: currentTime, CreatedAt: currentTime}
-		if requireEmailActivate {
-			var newNotActUser NotActivatedUser
-			newNotActUser.User = newUser
-			newNotActUser.EmailExpiration = common.MaxUnixTimeInt64
-
-			// 在未被認證的使用者中 email 應該是要能重複的
-			// 然而 Email 欄位是唯一限定不能重複(宣告時的繼承問題引起)
-			// 因此在 NotActivatedUser 表格中使用同樣唯一限定的 loginName 暫時代替
-			// 使用額外欄位 NotActEmail 紀錄真正的 Email
-			newNotActUser.Email = loginName
-			newNotActUser.NotActEmail = email
-
-			const emailActTokenRandLen = 32
-			randBytes := make([]byte, emailActTokenRandLen)
-			if _, err := rand.Read(randBytes); err != nil {
-				errList = append(errList, 8)
-			}
-			actToken = base64.RawURLEncoding.EncodeToString(randBytes)
-			newNotActUser.ActaivateToken = actToken
-
-			res = db.Create(&newNotActUser)
-		} else {
-			res = db.Create(&newUser)
-		}
-		if res.Error == nil {
-			newUserID = newUser.ID
-		} else {
-			errList = append(errList, 8)
-		}
-
+		res = db.Create(&newNotActUser)
+	} else {
+		res = db.Create(&newUser)
+	}
+	if res.Error == nil {
+		newUserID = newUser.ID
+	} else {
+		errList = append(errList, unknowErrCode)
 	}
 
 	return newUserID, actToken, errList
@@ -140,70 +104,86 @@ func CreateUser(loginName string, showName string, email string, password string
 // IsLoginNameUsed 查詢 LoginName 是否被使用過
 func IsLoginNameUsed(loginName string) bool {
 	var user User
-	res := db.Where(&User{LoginName: loginName}).Limit(1).Find(&user)
+	res := db.Where(&User{LoginName: loginName}).First(&user)
 	if res.RowsAffected > 0 {
 		return true
 	}
 
 	var notActUser NotActivatedUser
 	notActUser.LoginName = loginName
-	res = db.Where(&notActUser).Limit(1).Find(&notActUser)
+	res = db.Where(&notActUser).First(&notActUser)
 	return res.RowsAffected > 0
 }
 
-// IsEmailUsed 查詢 Email 是否被使用過
-func IsEmailUsed(email string) bool {
-	var user User
-	//db.Where("Email = ?", email).First(&user)
-	res := db.Where(&User{Email: email}).Limit(1).Find(&user)
+// UserEmailIsExist 查詢 Email 是否被使用過
+func UserEmailIsExist(email string) bool {
+	user := &User{Email: email}
+	res := db.Where(user).Limit(1).First(&user)
 	return res.RowsAffected > 0
 }
 
-// IsUserExist 根據 ID 查詢 User 是否存在
-func IsUserExist(userID int64) bool {
+// UserIsExist 根據 ID 查詢 User 是否存在
+func UserIsExist(userID uint64) bool {
 	var user User
-	res := db.Where(&User{ID: userID}, "ID").Limit(1).Find(&user)
+	res := db.Where(&User{ID: userID}, "ID").First(&user)
 	return res.RowsAffected > 0
 }
 
-// GetUserByLoginName 根據 LoginName 查詢 User
-func GetUserByLoginName(loginName string) (User, *gorm.DB) {
-	var user User
-	var res *gorm.DB = db.Where(&User{LoginName: loginName}).Limit(1).Find(&user)
-	return user, res
+// UserGetByLoginName 根據 LoginName 查詢 User
+func UserGetByLoginName(loginName string) (*User, error) {
+	user := &User{LoginName: loginName}
+	var res = db.Where(user).First(user)
+	return user, res.Error
 }
 
-// GetUserByID 根據 ID 查詢 User
-func GetUserByID(userID int64) (User, *gorm.DB) {
-	var user User
-	var res *gorm.DB = db.Where(&User{ID: userID}).Limit(1).Find(&user)
-	return user, res
+// UserGetByID 根據 ID 查詢 User
+func UserGetByID(userID uint64) (resUser *User, exist bool, err error) {
+	user := &User{ID: userID}
+	res := db.Find(&user)
+	if res.Error == nil {
+		if res.RowsAffected > 0 {
+			resUser = user
+			exist = true
+		}
+	} else {
+		err = res.Error
+	}
+	return
 }
 
-// UpdateLoginTime 更新使用者最後登入時間
-func UpdateLoginTime(userID int64) *gorm.DB {
-	var user = User{ID: userID}
-	res := db.Model(&user).Where(&user).Update("LastLoginTime", time.Now().Unix())
-	return res
+// UserUpdateLoginTime 更新使用者最後登入時間
+func (user *User) UpdateLoginTime() error {
+	// TODO: 新增登入紀錄 table
+	return nil
 }
 
-// GetNotActUserByToken 根據 Activate token 查詢 Not Activated User
-func GetNotActUserByToken(actToken string) (NotActivatedUser, *gorm.DB) {
-	var notActUser = NotActivatedUser{ActaivateToken: actToken}
-	res := db.Model(&notActUser).Where(&notActUser).Limit(1).Find(&notActUser)
-	return notActUser, res
+// NotActUserGetByToken 根據 Activate token 查詢 Not Activated User
+func NotActUserGetByToken(actToken string) (resUser *NotActivatedUser, exist bool, err error) {
+	notActUser := &NotActivatedUser{ActaivateToken: actToken}
+	res := db.Model(notActUser).Where(notActUser).Find(notActUser)
+	if res.Error == nil {
+		if res.RowsAffected > 0 {
+			resUser = notActUser
+			exist = true
+		}
+	} else {
+		err = res.Error
+	}
+
+	return
 }
 
-// DeleteNotActUserByLoginName 根據 loginName 刪除 NotActUser 紀錄
-func DeleteNotActUserByLoginName(loginName string) *gorm.DB {
-	var notActUser NotActivatedUser
-	notActUser.LoginName = loginName
-	res := db.Where(&notActUser).Delete(&NotActivatedUser{})
-	return res
+// NotActUserDeleteByLoginName 根據 loginName 刪除 NotActUser 紀錄
+func NotActUserDeleteByLoginName(loginName string) error {
+	filter := &NotActivatedUser{}
+	filter.LoginName = loginName
+
+	res := db.Where(filter).Delete(&NotActivatedUser{})
+	return res.Error
 }
 
 // ActivateUser avtivate a not activated user
-func ActivateUser(notActUser NotActivatedUser) (int64, *gorm.DB) {
+func ActivateUser(notActUser *NotActivatedUser) (uint64, error) {
 	// 遷移資料從 NotActivatedUser 到 User
 	var res *gorm.DB
 	notActUser.MailVaild = true
@@ -212,9 +192,9 @@ func ActivateUser(notActUser NotActivatedUser) (int64, *gorm.DB) {
 	notActUser.CreatedAt = currentTime
 	res = db.Create(&notActUser.User)
 	if res.Error != nil {
-		return 0, res
+		return 0, res.Error
 	}
 
 	res = db.Where(&NotActivatedUser{NotActEmail: notActUser.NotActEmail}).Delete(&NotActivatedUser{})
-	return notActUser.ID, res
+	return notActUser.ID, res.Error
 }

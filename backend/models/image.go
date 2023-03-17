@@ -1,28 +1,27 @@
 package models
 
 import (
+	"math"
 	"time"
-
-	"gorm.io/gorm"
 )
 
 // Image datebase image struct
 type Image struct {
-	ID       int64  `gorm:"column: ID; type: BIGINT UNSIGNED NOT NULL auto_increment; primary_key;" json:"id"`
-	HashID   string `gorm:"column: HashID; type: VARCHAR(30);" json:"hash_id"`
-	OwnerID  int64  `gorm:"column: OwnerID; type: BIGINT UNSIGNED NOT NULL; index:idx_owner_id;" json:"owner_id"`
-	FileName string `gorm:"column: FileName; type: VARCHAR(40);" json:"file_name"`
+	ID       uint64 `gorm:"auto_increment; primary_key"`
+	HashID   string `gorm:"type:VARCHAR(30)"`
+	OwnerID  uint64 `gorm:"index:idx_owner_id"`
+	FileName string `gorm:"type:VARCHAR(255)"`
 
-	Type       string `gorm:"column: Type; type: VARCHAR(10) NOT NULL;" json:"type"`
-	Width      int    `gorm:"column: Width; type:INTEGER UNSIGNED NOT NULL " json:"width"`
-	Height     int    `gorm:"column: Height; type:INTEGER UNSIGNED NOT NULL " json:"height"`
-	Size       int64  `gorm:"column: Size; type:BIGINT UNSIGNED" json:"size"`
-	MediumSize int64  `gorm:"column: MediumSize; type:BIGINT UNSIGNED; default:0" json:"medium_size"`
+	Type       string `gorm:"type:VARCHAR(30)"`
+	Width      uint32
+	Height     uint32
+	Size       int64
+	MediumSize int64
 
-	Title       string `gorm:"column: Title; type:VARCHAR(30) NOT NULL;" json:"title"`
-	Description string `gorm:"column: Description; type:VARCHAR(1000) NOT NULL;" json:"description"`
-	CreateAt    int64  `gorm:"column: CreatedAt; type:BIGINT UNSIGNED NOT NULL " json:"create_at"`
-	UpdateAt    int64  `gorm:"column: UpdateAt; type:BIGINT UNSIGNED NOT NULL " json:"update_at"`
+	Title       string `gorm:"type:VARCHAR(30)"`
+	Description string `gorm:"type:VARCHAR(1000)"`
+	CreateAt    int64  `gorm:"type:BIGINT UNSIGNED"`
+	UpdateAt    int64  `gorm:"type:BIGINT UNSIGNED"`
 }
 
 // TableName 指定 Image 表格的名稱
@@ -32,8 +31,8 @@ func (Image) TableName() string {
 
 // CreateImage 創建一筆新的 Image 紀錄
 // return id, hashID, error
-func CreateImage(title, description, imageType string, width, height int,
-	ownerID int64) (id int64, hashIDStr string, err error) {
+func CreateImage(title, description, imageType string, width, height uint32,
+	ownerID uint64) (id uint64, hashIDStr string, err error) {
 	// 把資料寫入資料庫
 
 	var newImage Image
@@ -53,7 +52,13 @@ func CreateImage(title, description, imageType string, width, height int,
 	}
 
 	// 根據新資料的 ID 更新 HashID
-	hashIDStr, err = hashID.EncodeInt64([]int64{newImage.ID})
+	var numbers []int64
+	if newImage.ID > math.MaxInt64 {
+		numbers = []int64{int64(newImage.ID % math.MaxInt64), int64(newImage.ID / math.MaxInt64)}
+	} else {
+		numbers = []int64{int64(newImage.ID)}
+	}
+	hashIDStr, err = hashID.EncodeInt64(numbers)
 	if err != nil {
 		return 0, "", err
 	}
@@ -63,26 +68,40 @@ func CreateImage(title, description, imageType string, width, height int,
 	return newImage.ID, hashIDStr, res.Error
 }
 
-// ImageFindByHashID 藉由 hashID 獲取 image 資料
-func ImageFindByHashID(id string) (*Image, error) {
+// ImageGetByHashID 藉由 hashID 獲取 image 資料
+func ImageGetByHashID(id string) (img *Image, exist bool, err error) {
 	arrayRes, _ := hashID.DecodeInt64WithError(id)
-	if len(arrayRes) == 0 {
-		return nil, gorm.ErrRecordNotFound
+	var imgID uint64
+	switch len(arrayRes) {
+	case 0:
+		return nil, false, nil
+	case 1:
+		imgID = uint64(arrayRes[0])
+	case 2:
+		imgID = uint64(arrayRes[0]) + uint64(arrayRes[1])*math.MaxInt64
 	}
-	imgID := arrayRes[0]
 
-	return imageFindByID(imgID)
+	return imageGetByID(imgID)
 }
 
-// imageFindByID 藉由 id 獲取 image 資料
-func imageFindByID(id int64) (*Image, error) {
+// imageGetByID 藉由 id 獲取 image 資料
+func imageGetByID(id uint64) (img *Image, exist bool, err error) {
 	image := &Image{}
-	res := db.Where(&Image{ID: id}, "ID").Find(image)
-	return image, res.Error
+	res := db.Where(&Image{ID: id}).Find(image)
+	if res.Error == nil {
+		if res.RowsAffected > 0 {
+			img = image
+			exist = true
+		}
+	} else {
+		err = res.Error
+	}
+
+	return
 }
 
 // ImageListByOwnerID 藉由 userID 獲取其擁有的圖片資料
-func ImageListByOwnerID(ownerID int64) ([]*Image, error) {
+func ImageListByOwnerID(ownerID uint64) ([]*Image, error) {
 	var imageList []*Image
 	res := db.Where(&Image{OwnerID: ownerID}, "OwnerID").Find(&imageList)
 	return imageList, res.Error

@@ -22,7 +22,6 @@ import (
 	"github.com/disintegration/imaging"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
-	"gorm.io/gorm"
 )
 
 const mdWidth = 700
@@ -30,8 +29,8 @@ const mdWidth = 700
 // fileHeaderDeal 處理上傳的 fileHeader
 // 發生錯誤時回傳 [2]string{"Filename", "錯誤訊息"}
 // 順利執行完時回傳空值皆為字串
-func imgFHeaderDeal(userIDInt int64, fileHeader *multipart.FileHeader) [2]string {
-	var imgID int64
+func imgFHeaderDeal(userIDInt uint64, fileHeader *multipart.FileHeader) [2]string {
+	var imgID uint64
 	var needRecycle = false
 	var gnrDBRecord, gnrMDImageFile, gnrOrgImageFile bool = false, false, false
 	var savePath, mdSavePath string
@@ -94,7 +93,7 @@ func imgFHeaderDeal(userIDInt int64, fileHeader *multipart.FileHeader) [2]string
 		var fi os.FileInfo
 		var orgImgFileSize, mdImgFileSize int64
 		var imgHashID string
-		imgID, imgHashID, err = models.CreateImage("", "", fileType, imgConf.Width, imgConf.Height, userIDInt)
+		imgID, imgHashID, err = models.CreateImage("", "", fileType, uint32(imgConf.Width), uint32(imgConf.Height), userIDInt)
 		savePath = filepath.Join(cfg.ImageSaveDir(), imgHashID+"."+fileType)
 		mdSavePath = filepath.Join(cfg.ImageMDSaveDir(), imgHashID+".md."+fileType)
 		if err != nil {
@@ -216,7 +215,7 @@ func UploadImage(c *gin.Context) {
 		return
 	}
 
-	userIDInt, _ := user.(int64)
+	userIDInt, _ := user.(uint64)
 	if err != nil {
 		fmt.Println(err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Bad Request."})
@@ -229,7 +228,7 @@ func UploadImage(c *gin.Context) {
 		return
 	}
 
-	//errList (第0項: file name，第1項: 錯誤原因)
+	// errList (第0項: file name，第1項: 錯誤原因)
 	var errList [][2]string
 
 	// 處理上傳的檔案
@@ -254,7 +253,7 @@ func EditImage(c *gin.Context) {
 		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "you have to sign in."})
 		return
 	}
-	userIDInt, _ := user.(int64)
+	userIDInt, _ := user.(uint64)
 
 	var dataMap map[string]interface{}
 	err = c.BindJSON(&dataMap)
@@ -262,13 +261,14 @@ func EditImage(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Bad request data"})
 	}
 
-	img, err := models.ImageFindByHashID(imgHashIDStr)
+	img, imgExist, err := models.ImageGetByHashID(imgHashIDStr)
 	if err != nil {
-		if err == gorm.ErrRecordNotFound {
-			c.String(http.StatusNotFound, "image not found")
-		} else {
-			c.String(http.StatusInternalServerError, "internal server error")
-		}
+		c.String(http.StatusInternalServerError, "internal server error")
+		return
+	}
+	if imgExist {
+		c.String(http.StatusNotFound, "image not found")
+		return
 	}
 	if img.OwnerID != userIDInt {
 		c.JSON(http.StatusForbidden, gin.H{"error": "You don't have permission."})
@@ -307,15 +307,15 @@ func DeleteImage(c *gin.Context) {
 		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "you have to sign in."})
 		return
 	}
-	userIDInt, _ := user.(int64)
+	userIDInt, _ := user.(uint64)
 
-	img, err := models.ImageFindByHashID(imgHashIDStr)
+	img, imgExist, err := models.ImageGetByHashID(imgHashIDStr)
 	if err != nil {
-		if err == gorm.ErrRecordNotFound {
-			c.String(http.StatusNotFound, "image not found")
-		} else {
-			c.String(http.StatusInternalServerError, "internal server error")
-		}
+		c.String(http.StatusInternalServerError, "internal server error")
+		return
+	}
+	if !imgExist {
+		c.String(http.StatusNotFound, "image not found")
 	}
 	var filename = img.FileName
 	if img.OwnerID != userIDInt {
@@ -340,19 +340,22 @@ func DeleteImage(c *gin.Context) {
 func GetImage(c *gin.Context) {
 	imgHashIDStr := c.Param("hashID")
 
-	img, err := models.ImageFindByHashID(imgHashIDStr)
+	img, imgExist, err := models.ImageGetByHashID(imgHashIDStr)
 	if err != nil {
-		if err == gorm.ErrRecordNotFound {
-			c.String(http.StatusNotFound, "image not found")
-		} else {
-			c.String(http.StatusInternalServerError, "internal server error")
-		}
+		c.String(http.StatusInternalServerError, "internal server error")
+		return
+	}
+	if !imgExist {
+		c.String(http.StatusNotFound, "image not found")
+		return
 	}
 
-	user, res := models.GetUserByID(img.OwnerID)
-	if res.Error != nil {
+	user, userExist, err := models.UserGetByID(img.OwnerID)
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal Server Error"})
-	} else if res.RowsAffected <= 0 {
+		return
+	}
+	if !userExist {
 		c.String(http.StatusNotFound, "Owner not found.")
 		return
 	}
@@ -381,13 +384,13 @@ func GetImage(c *gin.Context) {
 
 func GetUserImages(c *gin.Context) {
 	userIDStr := c.Param("userID")
-	userID, err := strconv.ParseInt(userIDStr, 10, 64)
+	userID, err := strconv.ParseUint(userIDStr, 10, 64)
 	if err != nil {
 		c.String(http.StatusBadRequest, "Bad request ID.")
 		return
 	}
 
-	if !models.IsUserExist(userID) {
+	if !models.UserIsExist(userID) {
 		c.String(http.StatusNotFound, "User does not exist.")
 		return
 	}

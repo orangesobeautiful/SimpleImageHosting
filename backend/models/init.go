@@ -23,16 +23,20 @@ func initHashID() error {
 	// 初始化 hashids
 	hashIDData := hashids.NewData()
 	// 從資料庫讀取 salt
-	hashIDSlat := SvrSettingGet(svrsn.HashIDSalt)
+	hashIDSlat, exist, err := SvrSettingGetWithErr(svrsn.HashIDSalt)
+	if err != nil {
+		return err
+	}
 
 	// 沒設定過則自動生成並儲存
-	if hashIDSlat == "" {
+	if !exist {
 		err = SvrSettingCreate(svrsn.HashIDSalt, "")
 		if err != nil {
 			logger.Error("create setting failed", zap.Error(err))
 			return err
 		}
-
+	}
+	if hashIDSlat == "" {
 		const hashIDSlatLen = 8
 		byteArray := make([]byte, hashIDSlatLen)
 		if _, readErr := io.ReadFull(rand.Reader, byteArray); readErr != nil {

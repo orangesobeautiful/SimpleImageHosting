@@ -3,16 +3,17 @@ package controller
 import (
 	"fmt"
 	"net/http"
+	"net/mail"
 	"sih/common"
 	"sih/models"
 	"sih/models/svrsn"
 	"sih/pkg/utils"
 	"strconv"
+	"unicode/utf8"
 
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/bcrypt"
-	"gorm.io/gorm"
 )
 
 // AuthRequired is a simple middleware to check the session
@@ -30,18 +31,16 @@ func AuthRequired(c *gin.Context) {
 
 // siteOwnerRegister (POST)
 func SiteOwnerRegister(c *gin.Context) {
-	var err error
 	if utils.IsTrueVal(
 		models.SvrSettingGet(svrsn.OwnerRegistered)) {
 		c.String(http.StatusNotFound, "404 page not found")
 	} else {
 		var inputJSON SignupInfo
-		err = c.BindJSON(&inputJSON)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Bad request data"})
+		if !registerReqDeal(c, &inputJSON) {
+			return
 		}
 
-		id, _, errList := models.CreateUser(inputJSON.LoginName, inputJSON.ShowName, inputJSON.Email, inputJSON.Password, 1, false)
+		id, _, errList := models.UserCreate(inputJSON.LoginName, inputJSON.ShowName, inputJSON.Email, inputJSON.Password, 1, false)
 
 		if len(errList) == 0 {
 			models.SvrSettingUpdate(svrsn.OwnerRegistered, strconv.FormatBool(true))
@@ -56,20 +55,76 @@ func SiteOwnerRegister(c *gin.Context) {
 	}
 }
 
-// register (POST)
-func Register(c *gin.Context) {
-	var err error
-	var res *gorm.DB
-	var inputJSON SignupInfo
-	err = c.BindJSON(&inputJSON)
+func registerReqDeal(c *gin.Context, req *SignupInfo) bool {
+	/*
+		error message
+		1: loginNameLen is used
+		2: length of loginNameLen is not meet requirements
+		3: length of showName is not meet requirements
+		4: length of password is not meet requirements
+		5: email is too long
+		6: email not vaild
+		7: email is used
+		8: internal server error
+	*/
+	var errList []int
+	err := c.BindJSON(req)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Bad request data"})
+	}
+
+	if models.IsLoginNameUsed(req.LoginName) {
+		errList = append(errList, 1)
+	}
+
+	var loginNameLen = len(req.LoginName)
+	if loginNameLen < 4 || loginNameLen > 30 {
+		errList = append(errList, 2)
+	}
+
+	var showNameLen = utf8.RuneCountInString(req.ShowName)
+	if showNameLen < 1 || showNameLen > 15 {
+		errList = append(errList, 3)
+	}
+
+	if len(req.Password) < 6 {
+		errList = append(errList, 4)
+	}
+	if len(req.Email) > 256 {
+		errList = append(errList, 5)
+	}
+
+	_, err = mail.ParseAddress(req.Email)
+	if len(req.Email) < 3 || err != nil {
+		errList = append(errList, 6)
+	} else if models.UserEmailIsExist(req.Email) {
+		errList = append(errList, 7)
+	}
+
+	if len(errList) > 0 {
+		returnJSON := make(map[string]interface{})
+		returnJSON["id"] = 0
+		returnJSON["err_list"] = errList
+		c.JSON(http.StatusOK, returnJSON)
+		return false
+	}
+
+	return true
+}
+
+// register (POST)
+func Register(c *gin.Context) {
+	var inputJSON SignupInfo
+
+	if !registerReqDeal(c, &inputJSON) {
+		return
 	}
 
 	var requireEmailActivate bool
 	requireEmailActivate, _ = strconv.ParseBool(
 		models.SvrSettingGet(svrsn.RequireEmailActivate))
-	id, actToken, errList := models.CreateUser(inputJSON.LoginName, inputJSON.ShowName, inputJSON.Email, inputJSON.Password, 3, requireEmailActivate)
+	id, actToken, errList := models.UserCreate(inputJSON.LoginName, inputJSON.ShowName,
+		inputJSON.Email, inputJSON.Password, 3, requireEmailActivate)
 
 	if requireEmailActivate && len(errList) == 0 {
 		var senderEmailAdrFormat = `"Simple Image Hosting" <` + models.SvrSettingGet(svrsn.SenderEmailAddress) + `>`
@@ -96,8 +151,8 @@ func Register(c *gin.Context) {
 		if err != nil {
 			errList = append(errList, 8)
 			fmt.Println(err.Error())
-			res = models.DeleteNotActUserByLoginName(inputJSON.LoginName)
-			if res.Error != nil {
+			err = models.NotActUserDeleteByLoginName(inputJSON.LoginName)
+			if err != nil {
 				errList = append(errList, 8)
 			}
 		}
@@ -113,19 +168,19 @@ func Register(c *gin.Context) {
 // AccountActivate (GET)
 func AccountActivate(c *gin.Context) {
 	actToken := c.Param("token")
-	var res *gorm.DB
-	var notActUser models.NotActivatedUser
-	notActUser, res = models.GetNotActUserByToken(actToken)
-	if res.Error != nil {
+
+	notActUser, exist, err := models.NotActUserGetByToken(actToken)
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal Server Error"})
 		return
-	} else if res.RowsAffected == 0 {
+	}
+	if !exist {
 		c.JSON(http.StatusForbidden, gin.H{"error": "Toekn is not valid or Expired."})
 		return
 	}
 
 	notActUser.ID = 0
-	var newUserID int64
+	var newUserID uint64
 	newUserID, _ = models.ActivateUser(notActUser)
 	if newUserID == 0 {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal Server Error."})
@@ -160,10 +215,9 @@ func Signin(c *gin.Context) {
 		return
 	}
 
-	var loginUser models.User
-	var res *gorm.DB
-	loginUser, res = models.GetUserByLoginName(inputJSON.LoginName)
-	if res.Error != nil {
+	var loginUser *models.User
+	loginUser, err = models.UserGetByLoginName(inputJSON.LoginName)
+	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 		return
 	}
@@ -175,10 +229,7 @@ func Signin(c *gin.Context) {
 		return
 	}
 
-	res = models.UpdateLoginTime(loginUser.ID)
-	if res.Error != nil {
-		fmt.Println("update user login time error:", err)
-	}
+	_ = loginUser.UpdateLoginTime()
 
 	// 儲存使用者至 session
 	session.Set(userkey, loginUser.ID)
@@ -212,12 +263,14 @@ func Myinfo(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid session token"})
 		return
 	}
-	id := idInterface.(int64)
+	id := idInterface.(uint64)
 
-	user, res := models.GetUserByID(id)
-	if res.Error != nil {
+	user, userExist, err := models.UserGetByID(id)
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal Server Error"})
-	} else if res.RowsAffected <= 0 {
+		return
+	}
+	if !userExist {
 		session.Delete(userkey)
 		if err := session.Save(); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal Server Error"})
@@ -237,16 +290,18 @@ func Myinfo(c *gin.Context) {
 
 func GetUserInfo(c *gin.Context) {
 	userIDStr := c.Param("userID")
-	userID, err := strconv.ParseInt(userIDStr, 10, 64)
+	userID, err := strconv.ParseUint(userIDStr, 10, 64)
 	if err != nil {
 		c.String(http.StatusBadRequest, "Bad request ID.")
 		return
 	}
 
-	user, res := models.GetUserByID(userID)
-	if res.Error != nil {
+	user, userExist, err := models.UserGetByID(userID)
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal Server Error"})
-	} else if res.RowsAffected <= 0 {
+		return
+	}
+	if !userExist {
 		c.String(http.StatusNotFound, "User not found.")
 		return
 	}

@@ -146,14 +146,13 @@ func initServer(cfg *config.CfgInfo, logger *zap.Logger) (engine *gin.Engine, er
 		return
 	}
 
-	controller.Init(logger)
+	controller.Init()
 	r := gin.New()
 	if cfg.DebugMode {
 		gin.SetMode(gin.DebugMode)
 	} else {
 		gin.SetMode(gin.ReleaseMode)
 	}
-	r.Use(gin.Recovery())
 	store := cookie.NewStore(secretKey)
 	r.Use(sessions.Sessions("sihsi", store))
 	setupRouter(r, cfg, logger)
@@ -167,7 +166,9 @@ func setupRouter(r *gin.Engine, cfg *config.CfgInfo, logger *zap.Logger) {
 
 	var apiRouter = r.Group("/api")
 	if cfg.Log.EnableAPIRouterLogger {
-		apiRouter.Use(ginzap.Ginzap(logger, "", false))
+		apiRouter.Use(ginzap.RecoveryWithZap(logger, true), ginzap.Ginzap(logger, "", false))
+	} else {
+		apiRouter.Use(gin.Recovery())
 	}
 	apiRouter.GET("/server-info", controller.GetServerInfo)
 	apiRouter.GET("/dashboard/settings", controller.GetWebsiteSettings)
@@ -194,7 +195,9 @@ func setupRouter(r *gin.Engine, cfg *config.CfgInfo, logger *zap.Logger) {
 	fP, _ := filepath.Abs(cfg.Server.FileSaveDir)
 	rootGroup := r.Group("/")
 	if cfg.Log.EnableFileRouterLogger {
-		rootGroup.Use(ginzap.Ginzap(logger, "", false))
+		rootGroup.Use(ginzap.RecoveryWithZap(logger, true), ginzap.Ginzap(logger, "", false))
+	} else {
+		apiRouter.Use(gin.Recovery())
 	}
 
 	rootGroup.Static("/ImagesDirect/", filepath.Join(fP, "ImagesDirect"))

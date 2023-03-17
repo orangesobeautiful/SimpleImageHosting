@@ -10,7 +10,6 @@ import (
 
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
-	"gorm.io/gorm"
 )
 
 func GetServerInfo(c *gin.Context) {
@@ -24,7 +23,6 @@ func GetServerInfo(c *gin.Context) {
 }
 
 func GetWebsiteSettings(c *gin.Context) {
-	var res *gorm.DB
 	var err error
 
 	// 驗證使用者身分
@@ -34,12 +32,13 @@ func GetWebsiteSettings(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid session token"})
 		return
 	}
-	userID := idInterface.(int64)
+	userID := idInterface.(uint64)
 
-	user, res := models.GetUserByID(userID)
-	if res.Error != nil {
+	user, userExist, err := models.UserGetByID(userID)
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal Server Error"})
-	} else if res.RowsAffected <= 0 {
+	}
+	if !userExist {
 		session.Delete(userkey)
 		if err = session.Save(); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal Server Error"})
@@ -48,6 +47,7 @@ func GetWebsiteSettings(c *gin.Context) {
 		c.String(http.StatusUnauthorized, "Unauthorized.")
 		return
 	}
+
 	if user.Grade != 1 {
 		c.JSON(http.StatusForbidden, gin.H{"error": "You don't have permission."})
 		return
@@ -74,15 +74,17 @@ func EditWebsiteSettings(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid session token"})
 		return
 	}
-	id := idInterface.(int64)
+	id := idInterface.(uint64)
 
-	var user models.User
-	var res *gorm.DB
+	var user *models.User
+	var userExist bool
 	var err error
-	user, res = models.GetUserByID(id)
-	if res.Error != nil {
+	user, userExist, err = models.UserGetByID(id)
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal Server Error"})
-	} else if res.RowsAffected <= 0 {
+		return
+	}
+	if !userExist {
 		// 資料庫裡找不到使用者
 		session.Delete(userkey)
 		if err := session.Save(); err != nil {
